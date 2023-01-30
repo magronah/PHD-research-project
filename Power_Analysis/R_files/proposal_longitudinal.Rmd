@@ -1,0 +1,783 @@
+---
+title: "Power Analysis of Microbiome Data"
+author: "Michael Agronah"
+#date: "2022-10-27"
+date: '\today'
+#date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    toc: true    # can remove
+    toc_depth: 3 # can remove
+    number_sections: true
+  highlight: zenburn
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{mathtools}
+- \usepackage{xcolor, hyperref}
+- \usepackage{lipsum}
+- \usepackage{longtable}
+- \usepackage{caption}
+- \usepackage{diagbox}
+- \usepackage{multirow}
+- \usepackage{amsmath}
+- \setlength{\headheight}{28pt}
+- \setlength{\footskip}{25pt}
+- \pagestyle{fancy}
+- \usepackage{tabularx}
+- \renewcommand{\headrulewidth}{0.5pt}
+- \renewcommand{\footrulewidth}{0.5pt}
+- \lhead{\includegraphics[width=8cm,height=1cm]{logo-McMaster}}
+- \cfoot{School of Computational Science and Engineering \\ McMaster University}
+- \rhead{\thepage}
+- \hypersetup{colorlinks   = true, linkcolor=blue, urlcolor  = blue}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options: 
+  chunk_output_type: console
+bibliography: packages.bib
+---
+
+```{r load_pkgs, include=FALSE, echo=FALSE,message=FALSE}
+library(ggplot2)
+library(dplyr)
+## uses denovo_simulation branch
+library(glmmTMB)
+library(MASS)
+## remotes::install_github("chvlyl/ZIBR")
+library(ZIBR)
+## remotes::install_github("nyiuab/NBZIMM")
+library(NBZIMM)
+## library(splinectomeR)
+library(lme4)
+library(patchwork)
+```
+
+
+# Multivariate analysis of Longitudianal Microbiome data using Generalised Linear Mixed Negative Binomial Model 
+
+## Abstract
+Human microbiome is dynamic in nature. Understanding the dynamics in longitudinal microbiome data can help explain the mechanisms that underpin human health and disease. However, longitudinal microbiome data analysis, whether 16S rRNA or metagenome shotgun, is difficult. Along with the difficulties presented by microbiome data characteristics such as sparsity, overdispersion, and compositionality, repeated measure introduces correlation between observations from the same individual at different time points. The majority of methods used in the literature to analyse longitudinal microbiome data only model one taxon at a single time point and do not handle the correlation struction between individual taxa across time.  In this work, a multivariate Negative Binomial Generalized Mixed Model (MVNBMM) is proposed for anlyzing longitudinal microbiome data. A special feature of MVNBMM is that is can handle the correllation structure of individual taxa over time. Fitting MVNBMM to data is however, very challenging becausure the number of parameter to be estimated for a negative binomial model is compistationall expensive and almost impossible for microbiome dataset which is typically of dimension in their thousands. In this project, Instead, a reduced rank method is used for fitting the data reduced rank method. 
+<!-- In this project, Instead, a reduced rank method is used for fitting the data reduced rank method. We show from a simulation studies that the reduced rank model can fit the fixed effect parameters with lower error compared to the  -->
+
+## Introduction 
+Longitudinal data arises when repeated measures are collected for the same subject. For example; DNA taking the microbiome of pregnant women repeatedly over a multiple time points. The literature of longitudinal microbiome investigations has generally respond mainly to  two queries: (1). to determine how microbiome abundances changes over time between groups (for example cases versus controls) [@lewis2015inflammation; @backhed2015dynamics], and 2. to investigate the relationship between microbiome abundances and other factors, for instance, environmental factors, clinical outcomes, etc) [@kodikara2022statistical; @chen2016two]. 
+
+Analyzing longitudinal microbiome data is challenging. First, In addition to the special propertes of overdispersion of microbiome data due to the variations in read depth and zero inflation,  repeated measurements exhibit correlation between observations taken from the same subject at various times points. Longitudinal data also often tend to have more missing data from a person or data not taken from everyone at all the time period studied [@kodikara2022statistical]. For instance, a longitudinal study collecting faecal specimens from patients may have missing data due to patients dropping out of the study during the period of the specimen collection.
+
+# Literature Review 
+<!-- Most of the methods used. Summarixe the methods and the pacakges used in the literature.  -->
+
+# Research Goals
+
+The goal of this project is to 
+
+1. model the relationship between taxa abundances over time and covariate variables of interest (for instance, clinical and environmental factors such as age, groups or disease status of patients, among others), while accounting for the correlation structure between individual taxa within individual subjects. The unstructured correlation matrix, however, requires too many parameter estimates and is computationally infeasible for a typical ASV or OTU tables with thousands of taxa. Thus, a reduced rank latent variable model’s estimation of the structured correlation matrix will provide an understanding of the correlation between taxa on the community level. 
+
+2. model how microbiome abundances change over time between groups and determine taxa with differential abundances over time between groups.  
+
+# Methods
+## Model Description: 
+The count data denoted by $Y_{ijt}$ is modeled by a negative binomial model defined as
+\begin{align}
+Y_{ijt} &\sim NB(mean = \mu_{ijt}, dispersion = \alpha_{it}),\\
+\boldsymbol\mu &= g^{-1}(E) \nonumber \\
+E &= X\beta + Zb,\,\,b \sim MVN(0, \Sigma) \nonumber
+\end{align}
+where $i,j$ and $t$ denote the $i^{th}$ taxa, $j^{th}$ sample and the $t^{th}$ time, respectively, and $Y_{i,j,t}$ denotes the count data for the $i^{th}$ taxa in the $j^{th}$ sample at time $t^{th}$. The function $g^{-1}$ is the link function and $\boldsymbol\mu$ is a vector of means with entries $\mu_{ijt}$.  $X$ and $Z$ are the fixed and the random effect model matrices respectively and $\beta$ is the fixed effect parameter. The vector $b$ is a multivariate deviate from a gaussian distribution with a variance covariance matrix $\Sigma$.
+
+
+Given an OTU table of dimension $n$, the parameters required to be estimated for $\Sigma$ are given by $n(n + 1)/2$. Thus, the number of parameter estimates for $\Sigma$ grows quadratically with $n$. For instance, a rare OTU table with 10 taxa only will require $55(=10*11/2)$ parameter estimates for $\Sigma$. Consequently, the typical OTU table with thousands of taxa will require millions of parameter estimates, which is computationally  impossible. Additionally, the unstructured covariance matrix $\Sigma$ is often singular due  to linear independence of the columns resulting in numerical instability and convergence problems of the fitting algorithms. A remedy is to use a latent variable model. This project applies a reduced rank latent variable model for estimating the structured covariance matrix. The reduced rank model expresses the columns of $\Sigma$ by a set of $r < n$ latent variables. The number of parameters required to be estimated for the reduced rank model with $r$ latent variables given by $2r + 1$, reducing the number of parameters to be estimated significantly to a linear function of $r$. In this project uses the estimation procedure implement in the *glmmTMB* package in R package.  Description of the estimation procedure is given in
+
+More on why a reduced rank model is good.
+```{r simulatedata2,echo=FALSE,message=FALSE,warning=FALSE }
+nIndiv <- 20; nTime <- 10; nTaxa <-100
+metadat <-function(nIndiv,nTime,nTaxa){
+  dd <- expand.grid(subject = factor(1:nIndiv),
+                  taxa =factor(1:nTaxa), time = (1:nTime))
+
+  grp = (rep(factor(c("control", "treatment")),length.out=nIndiv))
+  dd$group <- grp
+  dd
+}
+
+metadata =metadat(nIndiv,nTime,nTaxa)
+
+Theta_fun <- function(nTaxa){
+  rowIndices <- rep(1:nTaxa, 1:nTaxa); colIndices <- sequence(1:nTaxa)
+  template <- sparseMatrix(rowIndices, colIndices, x =
+                           if_else(rowIndices==colIndices,1,0))
+template@x
+}
+thet <- Theta_fun(nTaxa)
+
+
+Beta <- c(1, 0.2, 0.1, 0.2)
+
+sim <- function(dispersion,data=metadata,bet=Beta, Theta = thet,n=nIndiv){
+ p  = simulate(~group*time+(-1 + taxa|subject),
+              newdata = data,
+              newparams = list(beta= bet, theta =Theta),
+              family=negative.binomial(theta=dispersion))
+ data$count = unlist(p)
+ data
+}
+
+dd =sim(dispersion = 2)
+training <- dd[dd$time < floor(nTime*0.8),]
+test <- anti_join(dd, training, by='time') 
+```
+
+# Application 
+
+## Data Simulation
+Using the simulate function in *lme4*, we generated count data from a generalised linear mixed model with a negative binomial distribution. The simulation's parameters are displayed in Table \ref{tab:simPara}. The plot of the trajectory for three taxa from the simulated data is shown in Figure \ref{fig:explore}. The simulated data was splitted into $80\%$ training set and $20\%$ test set. A rank reduced rank random slope model with time nested in subjects as the grouping variable, taxa as the random effect and groups and the interaction between group and time as the fixed effect variable was fitted to the data. The optimal dimension of 3 for the reduced rank was determined by comparing the AICs of the model fitted to dimensions ranging from 2 to 10. Table \ref{aic} displays the AIC values and dimensions.
+
+```{r fitmodel,include = TRUE, eval=FALSE, echo=TRUE,message=FALSE,warning=FALSE, fig.height = 3}
+fit_list <- lapply(2:10,
+                   function(d) {
+                     fit.rr <-
+                     glmmTMB(count ~ group*time+ rr(-1 + taxa|subject,d = d),
+                                              data = training, family = nbinom2)
+                       })
+
+# compare fits via AIC
+aic_vec <- sapply(fit_list, AIC)
+aic_vec - min(aic_vec, na.rm = TRUE)
+```
+
+\begin{table*}[h]
+  \centering
+  \caption{Parameter values used in data simulation}
+    \begin{tabular}{l|cc}
+          \multicolumn{1}{p{4.75em}}{\textbf{Effects}} & \multicolumn{1}{l}{\textbf{Other parameters}}  \\
+          Intercept = 1 & Number of subjects = 20\\
+          Group = 0.2   & Number of Taxa = 100 \\
+          Time  =0.1   & Length of Time  = 10\\
+          Group*Time = 0.2  &  Number of Groups = 2  \\
+          Dispersion parameter = 2 & Random effect parameter ($\theta$) = Identity \\
+    \end{tabular}%
+  \label{tab:simPara}%
+\end{table*}
+
+<!-- \begin{center} -->
+<!-- \begin{longtable}{|l|l|l|} -->
+<!-- \caption{Table showing optimal rank dimension.} \label{aic} \\ -->
+<!-- \hline \multicolumn{1}{|c|}{\textbf{Rank dimension}} & \multicolumn{1}{c|}{\textbf{AIC}} \\ \hline \endfirsthead -->
+<!-- \multicolumn{2}{c}% -->
+<!-- {{\bfseries \tablename\ \thetable{} -- continued from previous page}} \\ -->
+<!-- \hline \multicolumn{1}{|c|}{\textbf{First column}} & \multicolumn{1}{c|}{\textbf{Second column}} \\ \hline  -->
+<!-- \endhead -->
+
+<!-- \hline \multicolumn{2}{|r|}{{}} \\ \hline -->
+<!-- \endfoot -->
+
+<!-- \hline \hline -->
+<!-- \endlastfoot -->
+<!-- 2 & 13907.46 \\ -->
+<!-- 3 & 13895.30 \\ -->
+<!-- 4 & 13902.29 \\ -->
+<!-- 5 & 13905.58 \\ -->
+<!-- 6 & 13909.36 \\ -->
+<!-- 7 & 13916.92 \\ -->
+<!-- 8 & 13930.74 \\ -->
+<!-- 9 & 13946.07 \\ -->
+<!-- 10 &  13962.55 \\ -->
+<!-- \end{longtable} -->
+<!-- \end{center} -->
+
+```{r plot, echo=FALSE,message=FALSE,warning=FALSE, fig.show='hold', fig.cap="\\label{fig:explore} Some simulated taxa profiles with time, group and group * time effects and 0.2 dispersion", fig.fullwidth=FALSE,fig.align = 'center', fig.height = 3}
+
+p1<-dd[dd$taxa ==1,] %>%
+    ggplot(aes(x=time, y=log(count),  colour= (group),
+             group = (subject), shape= (group), 
+             linetype = (group)))+
+    geom_line()+ geom_point()+ggtitle("Taxa 1")+ylab("Count (log scale)")+
+    labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") +
+    scale_color_manual(values=c("steelblue","darkviolet"))+
+    theme(legend.position = "none")
+
+p11<-dd[dd$taxa ==2,]  %>%
+    ggplot(aes(x=time, y=log(count),  colour= (group),
+             group = (subject), shape= (group), 
+             linetype = (group)))+
+    geom_line()+ geom_point()+ggtitle("Taxa 2")+ylab("Count (log scale)")+
+    labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") +
+    scale_color_manual(values=c("steelblue","darkviolet"))+
+    theme(legend.position = "none")
+
+p111<-dd[dd$taxa ==3,]  %>%
+    ggplot(aes(x=time, y=log(count),  colour= (group),
+             group = (subject), shape= (group), 
+             linetype = (group)))+
+    geom_line()+ geom_point()+ggtitle("Taxa 3")+ylab("Count (log scale)")+
+    labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") +
+    scale_color_manual(values=c("steelblue","darkviolet"))+
+    theme()
+
+p1|p11|p111
+```
+# Results 
+
+## Prediction 
+## Model Comparison with the Univariate NBMM
+
+```{r error_compare, eval= FALSE, include= FALSE, echo=FALSE,message=FALSE,warning=FALSE, }
+
+Compare_models <- function(nInd, nTax, Bet,nTim,nSim){
+  
+  Theta = Theta_fun(nTax);  Ncol = length(Bet)
+  Other_Effect_Est <- matrix(NA, nrow = nTax, ncol = Ncol)
+  other_err =  glmmtmb_err =  matrix(NA,  nrow = nSim,ncol = Ncol)
+
+  for(i in 1:nSim){
+
+    TrueEffects <- matrix(rep(Bet, each = nTax),
+                          nrow = nTax,ncol = Ncol)
+
+    metadata = metadat(nInd,nTim,nTax)
+    
+    dd = sim(dispersion=2,metadata,Bet,Theta,nInd)
+    
+    fit_glmmtmb_rr = glmmTMB(count ~ group*time+ rr(-1 + taxa|subject,3),
+                              data = dd, family = nbinom2)
+    
+    glmmtmb_err[i,]  = (Bet - unlist(fixef(fit_glmmtmb_rr)$cond))^2
+
+    for(n in 1:nTax){
+
+      Taxa <- dd[dd$taxa == n,]
+      fit_nbmm<-glmm.nb(count~group + time + group*time,
+                        random = ~ 1 | subject, data = Taxa,
+                        verbose = FALSE,
+                        method = "ML", control =list(msMaxIter = 1000,
+                                                     msMaxEval = 1000))
+
+      Other_Effect_Est[n,] = fixef(fit_nbmm)
+    }
+
+    otherErr = (TrueEffects - Other_Effect_Est)^2
+    other_err[i,] = colMeans(otherErr)
+  }
+
+  other_err_dat = data.frame(other_err)
+  glmmtmb_err_dat = data.frame(glmmtmb_err)
+  cols = c("intercept", "group", "time", "group_time")
+  colnames(other_err_dat) = colnames(glmmtmb_err_dat) = cols
+
+  v = list(other_err_data = other_err_dat, glmmtmb_err_data = glmmtmb_err_dat)
+
+  nsim = 1:nSim
+  inter <- (v
+            %>% setNames(c("other", "glmmtmb"))
+            %>% purrr::map_dfr(pull, intercept)
+  )
+  inter$nsim  = nsim
+  grp <- (v
+          %>% setNames(c("other", "glmmtmb"))
+          %>% purrr::map_dfr(pull, group)
+  )
+
+  grp$nsim  = nsim
+  tme <- (v
+          %>% setNames(c("other", "glmmtmb"))
+          %>% purrr::map_dfr(pull, time)
+  )
+  tme$nsim  = nsim
+
+  grptime <- (v
+              %>% setNames(c("other", "glmmtmb"))
+              %>% purrr::map_dfr(pull, group_time)
+  )
+  grptime$nsim  = nsim
+  v = list(Intercept = inter, Group  = grp, Time = tme, Group_Time = grptime)
+}
+
+nIndiv = 20; nTime = 10; nTaxa = 10; Beta  =  c(1, 0.2, 0.1, 0.2)
+v = Compare_models(nInd=nIndiv, nTax=nTaxa,Bet=Beta,nTim =nTime,nSim=10)
+
+
+effect_error_plots <- function(error_data_list){
+
+  plts = list()
+  for(i in 1:length(v)){
+    plt = ggplot(v[[i]],aes(x =  nsim)) +
+      geom_point(aes(y = other)) +
+      geom_line(aes(y = other,color = "glmm.nb")) +
+      geom_point(aes( y = glmmtmb)) +
+      geom_line(aes(y = glmmtmb,color = "glmmtmb")) +
+      ggtitle(names(v)[i]) +
+      xlab("Number of simulations") + ylab("Mean Squared Errors")
+      # ggtitle("Error comparision: Mutivariate ve univariate NB model")
+    plts[[i]] = plt
+  }
+  plts
+}
+
+plts = effect_error_plots(v)
+p = (plts[[1]]|plts[[2]])/(plts[[3]]|plts[[4]]) & theme(legend.position = "bottom")
+p + plot_layout(guides = "collect")
+```
+
+```{r heatmap_contour1, warning=FALSE, message=FALSE, echo=FALSE,fig.cap="\\label{fit_cont} Heatmap showing the power and total number of taxa in grids of control and effect sizes"}
+library(png)
+library(grid)
+img <- readPNG("Power_Project/Datasets/error_compare.png")
+grid.raster(img)
+```
+
+## Investigation of the biasness of the Model
+
+```{r}
+library(ggplot2); theme_set(theme_bw())
+```
+
+## simulate latent variables
+
+```{r}
+sim_sed <- function(dispersion,sed,data=metadata,bet=Beta, Theta = thet,n=nIndiv){
+ p  = simulate(seed =sed, ~group*time+(-1 + taxa|subject:time),
+              newdata = data,
+              newparams = list(beta= bet, theta =Theta),
+              family=negative.binomial(theta=dispersion))
+ data$count = unlist(p)
+ data
+}
+
+latent_vals <- function(sed){
+   p = simulate(seed = sed, ~group*time + (-1 + taxa|subject),
+              newdata = dd,
+              newparams = list(beta = Beta,
+                               theta = thet*1e16,
+                               sigma = 1e-16),
+              family = gaussian)[[1]]
+  p
+} 
+
+nIndiv <- 10; nTime <- 10; nTaxa <-10
+metadata =metadat(nIndiv,nTime,nTaxa)
+thet <- Theta_fun(nTaxa); dd = metadata
+Beta <- c(1, 0.2, 0.1, 0.2)
+
+nSim = 10; error_by_taxa = matrix(NA, nrow = nrow(metadata),ncol = nSim)
+for(i in 1:nSim){
+  sed = i
+  dat = sim_sed(dispersion=2,sed,data=metadata,bet=Beta, Theta = thet,n=nIndiv)
+  latent = latent_vals(sed)
+  glmmTMBfit_rr <- glmmTMB(count ~ group*time+ rr(-1 + taxa|subject, 2), 
+                   data = dat, family = nbinom2) 
+  pred = predict(glmmTMBfit_rr)
+
+  X = model.matrix(~group*time,metadata)
+  true_data = X%*%(Beta) + latent
+  error_by_taxa[, i] = (true_data - pred)^2
+}
+MSE = rowMeans(error_by_taxa)
+
+
+#The plot here shows the bias of the method. We show a plot of the simulation
+# MSE with heat map? That would be all. The average mean squared error at each time point
+pred =predict(glmmTMBfit_rr,newdata = data,type = "response",
+                      allow.new.levels=TRUE)
+
+err[i] = mean((test$count - test$predicted))
+
+#Saves me the troub of computing Z
+```
+
+
+
+
+
+
+
+We compare the performance of our model estimates to a negivebive biomian dit which fits on model at a time 
+
+1. What is the difference between the 2 models. 
+
+<!-- ```{r} -->
+<!-- # glmmTMBfit_rr <- glmmTMB(count ~ group*time+ rr(-1 + taxa|subject:time), -->
+<!-- #                 data = training, family = nbinom2)  -->
+<!-- #  -->
+<!-- # Z = getME(glmmTMBfit_rr,"b") -->
+<!-- # beta_est = fixef(glmmTMBfit_rr)$cond -->
+<!-- # VarCorr(glmmTMBfit_rr) -->
+<!-- # metadata =metadat(nIndiv,nTime,nTaxa) -->
+<!-- # nTaxa -->
+<!-- # X  = model.matrix(~group*time,metadata) -->
+<!-- # (Z = getME(glmmTMBfit_rr,"Zzi")) -->
+<!-- #  -->
+<!-- # a = X%*%(Beta) -->
+<!-- # dim() -->
+<!-- #  -->
+<!-- # true_data =  -->
+<!-- #The set matrixs will be the same. Check the its -->
+<!-- #View(a) -->
+<!-- ``` -->
+
+
+
+<!-- Wes how in figure,  -->
+
+<!-- # Conclusion  -->
+
+<!-- IN this work we should that a randk rudce mtodel can be used to model logitudinal microbiome data and we should that is can defitely model otus much bettwer than... but the problem is that it is very challenging to fit these models because the number of parameter estimates increases quadratically with the dimensionaly increases q -->
+
+<!-- In this article,we introduced a variance-covariance structure, rr, in glmmTMB, to add reduced-rank functionality to mixed models. This feature broadens the scope of models that can be fitted by writing a large dimensional multivariate random effect as a linear combination of d latent variables, a more parsimonious structure that can be more readily estimated when the dimension of the random effect is large. In Section 1, we discussed available tools in R, such as gllvm, which also fit latent variable models. These packages were developed with a primary focus on models for ecological data. The key advantage of our work is adding a factor analytic term to the suite of random effects structures already available in glmmTMB, such that generalised latent variable models can now be fitted to complex study designs, using a familiar interface. -->
+
+
+<!-- ```{r compare_models} -->
+<!-- #' Microbiome data is overdispersed. A distribution for modelling overdispersed count data is the -->
+<!-- #' Negative binomial distribution. -->
+<!-- #' The negative binomial distrinution has offen been used in the literature of longitudinal microbiome studies to generally to answer these 2 questions 1 to study how microbial abundance changes over time between groups of interest (e.g. cases versus controls, disease or treatment groups, and 2. how the association between microbial abundance and other factors such as clinical outcomes, disease or treatments change over time [7]. In this context, both time and differences between patients or individual groups may be of interest. The downside however is that these models are univariate NB models, ie, they fit only one time per at a sigle time, ant therefore go not capture the relations correllations struction of individaule otus and the interactions between otus at different times. Thus, using these models can be .. We introduces the multivariate Negative Mixed Binomial Model. The advantage of the model is that it models the correlation structure of otus over time. The model -->
+<!-- #' -->
+<!-- #' Give the .. the otu is modeld by mixtre model as fi -->
+<!-- #' -->
+<!-- #' -->
+<!-- #' -->
+<!-- #' time -->
+<!-- #'   2.  been  of the modeles used in the literature for modelling longitudinal microbiome data -->
+<!-- #' is the univariate binomial distrubion -->
+<!-- #' What has been used -->
+<!-- #' Figure ...shows the mean squared errors for the control and treatment -->
+<!-- We contrast our model's estimates for the fixed effect parameters with that of the univariate Negative Binomial Model. Figure  displays a plot of the mean squared error of the estimations of the fixed effect parameters for 100 simulations performed using the two models.   -->
+
+
+<!-- # Then 3, we show that our model is ubiass and assymtotically consistent and as -->
+
+<!-- # Futher, the model can be used to understand the correlation between otus. -->
+
+<!-- # Fit the model and make predicytions -->
+<!-- #Predictions -->
+<!-- Making prediction, we show that our estimated method is unbiase. How? by finding the mean or the -->
+<!-- errors and showing that it tends to zero or it is the same each time -->
+
+<!-- We splitted the data into 80 -20 training and test split. -->
+<!-- # Biasness of method -->
+<!-- <!-- 1. Should I be simulating with the same parameter set?  --> -->
+<!-- ```{r} -->
+
+<!-- nsim = 20; err = c() -->
+<!-- for(i in 1:nsim){ -->
+
+<!--   dd =sim(dispersion = 1) -->
+<!--   training <- dd[dd$time < floor(nTime*0.8),] -->
+<!--   test <- anti_join(dd, training, by='time') -->
+<!--   test_x <- test %>% dplyr::select(-c("count")) -->
+
+<!--   glmmTMBfit_rr <- glmmTMB(count ~ group*time+ rr(-1 + taxa|subject:time,3), -->
+<!--               data = training, family = nbinom2) -->
+
+<!--   predict <- predict(glmmTMBfit_rr, -->
+<!--                    newdata = test[], -->
+<!--                    type = "response", -->
+<!--                    allow.new.levels=TRUE)#re.form = NULL -->
+
+<!--   summary(glmmTMBfit_rr) -->
+<!--   str(predict) -->
+<!--   pred <- predict$fit -->
+<!--   test$predicted <- (pred) -->
+<!--   View(test) -->
+<!--   err[i] = mean((test$count - test$predicted)) -->
+<!-- } -->
+<!-- data = data.frame(mean_squared_errors =err, index = 1:length(err)) -->
+
+<!-- ggplot(data, aes(x = index,y = log(mean_squared_errors))) + -->
+<!--   geom_point() + -->
+<!--   geom_line() -->
+<!-- ``` -->
+
+
+
+
+<!-- ```{r} -->
+<!-- cmult <- 1.96 -->
+<!-- test$ymin<-exp(pred-cmult*SE); test$ymax<-exp(pred+cmult*SE) -->
+
+<!-- pd <- position_dodge2(width=0.9) -->
+<!-- test_control <- test[test$group == "control",] -->
+<!-- test_treatment <- test[test$group == "treatment",] -->
+
+<!-- g0 <- ggplot(test_control,aes(x=(time),y=predicted,colour=group))+ -->
+<!--    geom_point(position = pd) + ggtitle("control") + -->
+<!--   geom_linerange(aes(ymin=ymin,ymax=ymax),position = pd) + -->
+<!--   theme(legend.position = "none") -->
+
+<!-- g1 <- ggplot(test_treatment,aes(x=(time),y=predicted,colour=group))+ -->
+<!--    geom_point(position = pd) + ggtitle("treatment") + -->
+<!--   geom_linerange(aes(ymin=ymin,ymax=ymax),position = pd)+ -->
+<!--   theme(legend.position = "none") -->
+
+
+
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+
+<!-- FixedEffects <- matrix(NA, nrow = nTaxa, ncol = length(bet)) -->
+<!-- for(n in 1:nTaxa){ -->
+<!--   Taxa <- df[df$taxa == n,] -->
+<!--   fit_nbmm<-glmm.nb(count~group + time + group*time, -->
+<!--                   random = ~ 1 | subject, data = Taxa,verbose = FALSE) -->
+<!--   FixedEffects[n,] = fixef(fit_nbmm) -->
+<!-- } -->
+
+<!-- OtherFixedEstMean <- colMeans( -->
+<!--                       FixedEffect[,c("intercept", "group", "time", "group*time") -->
+<!--                             ]) -->
+<!-- (OtherFixedEstMean[1]) -->
+
+<!-- ########################################################### -->
+<!-- FixedEffect =data.frame(FixedEffects, factor(paste("taxa",1:nTaxa))) -->
+<!-- colnames(FixedEffect) <-c("intercept", "group", "time", "group*time","taxa") -->
+
+<!-- # bet; c(mean(FixedEffects[,1]),mean(FixedEffects[,2]),mean(FixedEffects[,3]),mean(FixedEffects[,4])); fixef(glmmTMBfit_rr) -->
+
+<!-- glmmFixed_est <- fixef(glmmTMBfit_rr)$cond -->
+<!-- OtherFixedEstMean <- colMeans( -->
+<!--                       FixedEffect[,c("intercept", "group", "time", "group*time") -->
+<!--                             ]) -->
+
+<!-- require(reshape2) ## should be at top of the file, probably -->
+<!-- p<- melt(FixedEffect, id.var="taxa") -->
+<!-- dat =p[p$variable == "group",] -->
+
+<!-- gp <- ggplot(data=dat, aes(x=taxa, y=value)) + -->
+<!--     geom_point(aes(colour="glmm.nb per-taxa", group=variable)) + -->
+<!--     geom_line(aes(y=bet[2],colour="True effect",group="mm"),linewidth=1) + -->
+<!--     geom_line(aes(y=glmmFixed_est[2],colour="glmmTMB-all taxa",group="kk"),linetype="dashed",linewidth=1) + -->
+<!--     geom_line(aes(y=OtherFixedEstMean[2],colour="glmm.nb:Mean est",group="rr"),linetype="dashed",linewidth=1) + -->
+<!--   ggtitle("Group Effect")+ylab("group effect") + -->
+<!--     scale_x_discrete(limits=dat$taxa) + -->
+<!--   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, -->
+<!--                                        hjust=1), legend.position = "none") -->
+
+
+<!-- dat =p[p$variable == "time",] -->
+<!-- tme <- ggplot(data=dat, aes(x=taxa, y=value)) + -->
+<!--     geom_point(aes(colour="glmm.nb per-taxa", group=variable)) + -->
+<!--     geom_line(aes(y=bet[3],colour="True effect",group="mm"),linewidth=1) + -->
+<!--     geom_line(aes(y=glmmFixed_est[3],colour="glmmTMB-all taxa",group="kk"),linetype="dashed",linewidth=1) + -->
+<!--     geom_line(aes(y=OtherFixedEstMean[3],colour="glmm.nb:Mean est",group="rr"),linetype="dashed",linewidth=1) + -->
+<!--   ggtitle("Time Effect")+ylab("time effect") + -->
+<!--     scale_x_discrete(limits=dat$taxa) + -->
+<!--   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, -->
+<!--                                        hjust=1),legend.position = "none") -->
+
+<!-- dat =p[p$variable == "group*time",] -->
+<!-- interaction <- ggplot(data=dat, aes(x=taxa, y=value)) + -->
+<!--     geom_point(aes(colour="glmm.nb per-taxa", group=variable)) + -->
+<!--     geom_line(aes(y=bet[4],colour="True effect",group="mm"),linewidth=1) + -->
+<!--     geom_line(aes(y=glmmFixed_est[4],colour="glmmTMB-all taxa",group="kk"),linetype="dashed",linewidth=1) + -->
+<!--     geom_line(aes(y=OtherFixedEstMean[4],colour="glmm.nb:Mean est",group="rr"),linetype="dashed",linewidth=1) + -->
+<!--   ggtitle("Group and time effect")+ylab("group*time effect") + -->
+<!--     scale_x_discrete(limits=dat$taxa) + -->
+<!--   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, -->
+<!--                                        hjust=1)) + -->
+<!--   theme(legend.position = "top") -->
+
+<!-- gp -->
+<!-- tme -->
+<!-- interaction -->
+
+<!-- #Now you -->
+
+<!-- ## patchwork -->
+<!-- # combined = (gp/tme)/(interaction) & theme(legend.position = "bottom") -->
+<!-- # combined + plot_layout(guides = "collect") -->
+
+
+<!-- #interaction -->
+<!-- # Conclusion -->
+<!-- #For all cases the fixed effect estimate is better estimated when all the parameter values are used to build the model. -->
+
+<!-- ##' Rank reduction -->
+<!-- ##' Know how reduced rank factorisation works -->
+<!-- ##' What is the meaning of rank, etc -->
+<!-- ##' WHat can you use rank to say about the data. What insithe reduced rank give us insight about the data -->
+<!-- ##' https://www.ethanepperly.com/index.php/2021/10/26/big-ideas-in-applied-math-low-rank-matrices/ -->
+
+<!-- ##' I am comparing the ability to be able to capture the fixed effects components -->
+<!-- ##' using the method I am proposing and the methods used in the literature. -->
+<!-- ##' -->
+<!-- ##' The overall is better in estimating the fixed effect components than the -->
+<!-- ##' indivdual because in the individaul not all the dataset is being used. -->
+<!-- # Compare -->
+<!-- #fit_nbmm<-glmm.nb(Taxa_1~Time+Group+Time*Group, -->
+<!-- #                  random = ~ 1 | Indiv, data = dfcount) -->
+<!-- #summary(fit_nbmm) -->
+
+<!-- test_x <- test[test$time >= 8, ] %>% dplyr::select(-c("count")) -->
+<!-- #test_x = test_x[test_x$time == 9, ] -->
+
+<!-- predict <- predict(glmmTMBfit_rr, -->
+<!--                    newdata = test_x, type="response", -->
+<!--                    allow.new.levels=TRUE,se.fit=TRUE)#re.form = NULL) -->
+<!-- SE <- predict$se.fit -->
+<!-- pred <- predict$fit -->
+
+<!-- ## BMB: assigning a vector of length 300 (i.e. t -->
+<!-- ## predictions for time==9) to a test set with times -->
+<!-- ## 8, 9, and 10; pred automatically gets recycled! -->
+<!-- test$predicted <- exp(pred); cmult <- 1.96 -->
+<!-- test$ymin<-exp(pred-cmult*SE); test$ymax<-exp(pred+cmult*SE) -->
+
+<!-- pd <- position_dodge2(width=0.9) -->
+<!-- #test$Time <- seq(8,10, length.out = nrow(test)) -->
+<!-- test_control <- test[test$group == "control",] -->
+<!-- test_treatment <- test[test$group == "treatment",] -->
+
+<!-- g0 <- ggplot(test_control,aes(x=(time),y=predicted,colour=group))+ -->
+<!--    geom_point(position = pd) + ggtitle("control") + -->
+<!--   geom_linerange(aes(ymin=ymin,ymax=ymax),position = pd) + -->
+<!--   theme(legend.position = "none") -->
+<!-- g0 -->
+<!-- g1 <- ggplot(test_treatment,aes(x=(time),y=predicted,colour=group))+ -->
+<!--    geom_point(position = pd) + ggtitle("treatment") + -->
+<!--   geom_linerange(aes(ymin=ymin,ymax=ymax),position = pd)+ -->
+<!--   theme(legend.position = "none") -->
+<!-- ``` -->
+
+
+<!-- Questions -->
+<!-- 1. What the predict function is doing, adding the time to the plot, other module diagnostics -->
+
+<!-- The confidence intervals are large for both treatment and control predictions. -->
+<!-- The confidence level being used here is $95\%$ confidence interval. -->
+
+<!-- *The solution in this case is straightforward: approximate our high-rank matrix with a low-rank one, which we express in algorithmically useful form as a rank factorization. A matrix may be excellently approximated by a rank-100 matrix and horribly approximated by a rank-90 matrix* -->
+
+<!-- ```{r, echo=FALSE,message=FALSE,warning=FALSE} -->
+<!-- #This may be because I do not have enough samples? -->
+<!-- ##' Get the confidence interval plots done and write out the intepretations -->
+<!-- ##' Explore the other moel diagnostucs -->
+<!-- ##' Explore what you can say about the otus from the reduced rank -->
+<!-- ##'  you can sa -->
+
+<!-- #This is just one sample. You should do cross validation -->
+<!-- taxa1 = test[test$taxa == 1,] -->
+
+<!-- p1<-taxa1 %>% -->
+<!--     ggplot(aes(x=time, y=log(count),  colour= (group), -->
+<!--              group = (subject), shape= (group), -->
+<!--              linetype = (group)))+ -->
+<!--     geom_line()+ geom_point()+ggtitle("a")+ylab("Count")+ -->
+<!--     labs( linetype = "Group", shape = "Group", color="Group") + -->
+<!--     scale_color_manual(values=c("steelblue","darkviolet"))+ -->
+<!--     theme(legend.position = "none") -->
+
+
+<!-- p11 <- taxa1 %>% -->
+<!--     ggplot(aes(x=time, y=log(predicted),  colour= (group), -->
+<!--              group = (subject), shape= (group), -->
+<!--              linetype = (group)))+ -->
+<!--     geom_line()+ geom_point()+ggtitle("mean prediction")+ylab("Count")+ -->
+<!--     labs( linetype = "Group", shape = "Group", color="Group") + -->
+<!--     scale_color_manual(values=c("steelblue","darkviolet"))+ -->
+<!--     theme(legend.position = "none") -->
+
+<!-- p1|p11 -->
+<!-- ``` -->
+<!-- You cannot compare these two plots because .. -->
+
+<!-- ```{r check_slopes, echo=FALSE,message=FALSE,warning=FALSE} -->
+<!-- p11 + geom_abline(intercept = 1.6, slope = 0.3)+ -->
+<!--     geom_abline(intercept = 1.6, slope = 0.1, lty = 2) -->
+<!-- ``` -->
+
+<!-- # Confidence interval plot -->
+<!-- . How to compare the thet parameter from lme4 used to generate eht -->
+<!-- Confi -->
+<!-- ```{r} -->
+<!-- #fit.rr$obj$env$report(fit.rr$fit$parfull)$fact_load[[1]] -->
+<!-- ``` -->
+
+# Conclusion 
+
+# Future Work 
+
+I would like to be able to say that using the full model or even the reduced rank model
+
+1. Fix the warning
+
+3. Study on what the reduced rank correllation tells me about the data but first you have to
+do the diagnoses on the model fit first.
+4. SHow that the fits for is either the same or better than that of the single fit models
+by chceking the standard errors, etc the
+5. Fix the table of values
+
+1. Check this L <- gt_load("vignette_data/sherman.rda") again and see if it does what they say it will do
+2. Understand Ben's code on fiting the confidence intervals on prediction and write on
+it. Model diagnostics
+
+1. Intepreting low rank correlation matrices
+2. What I can use my low rank matrix for. What the low rank tells me about the
+community
+
+
+How otus are changing over time between groups while still capturing the correlation
+between otus in an individual over time
+1. Understand the AR.
+
+I need a way of assessing my model to see how it is doing
+on simulated data even before I use it on test data.
+How good is my reduced
+
+*Recent microbiome studies have employed the longitudinal study design to investigate the dynamic changes of microbial abundance over time and the associations between the microbiome and host environmental/clinical factors [11–15]. microorganisms work in concert to modulate and influence their environment [37]. We need to consider the multivariate relationship among microorganisms at a single time point, as well as across time points in the case of longitudinal studies. However, most existing modelling approaches consider one microorganism at a time and fail to capture the multivariate nature of the data [7, 30, 67, 86]. Moreover, in a longitudinal setting, representing the interactions and similarities or connectivity between microorganisms becomes complex when the data are high-dimensional, resulting in high computational cost and low prediction accuracy of most statistical methods.*
+
+
+*profile of microbiome with host and environment interactions.The advantage of longitudinal analysis is also suitable for microbiome data. It will enhance our understanding of short-and long-term trends of microbiome by intervention, such as diet, and the development and persistence of chronic diseases caused by microbiome*
+These microbiomes work together to produce the joint effects they porduce. Therefore we ne
+How to assess my
+
+
+Goal: study the other methods, do the prediction, understand the syntax, study the direiclet multinomial,etc
+
+So the whole point is that I cannot fit the full model so I fit the reduced rank model
+Noe w
+
+
+I want to do prediction for individual taxon. Modelling
+
+Predict function is predicting the mean of the 2 groups???
+
+
+1. Listen to the
+
+# References 
+
+
+<!-- ```{r simulatedata, include=FALSE, echo=FALSE,message=FALSE,warning=FALSE} -->
+<!-- #Simple example -->
+<!-- #' I want to be able to tell if the random effect variance and the -->
+<!-- # BMB: library() is redundant with code at the top ... -->
+<!-- nIndiv <- 10 -->
+<!-- dd <- data.frame(subject = factor(rep(1:nIndiv, 3))) -->
+
+<!-- thet <- 0.1; bet <- 1; sig <- 4 -->
+<!-- set.seed(101) -->
+<!-- dd$count = unlist(simulate(~ 1+(1|subject), -->
+<!--               newdata = dd, -->
+<!--               newparams = list(beta= bet, theta =thet,sigma = sig))) -->
+
+<!-- fit <- glmmTMB(count ~ 1 +(1|subject), data = dd) -->
+<!-- fixef(fit); getME(fit,"theta") -->
+<!-- bet -->
+<!-- ##' A small residual variance leads to lead to a better estimate of the -->
+<!-- ##' fixed effect component but not the random effect term -->
+<!-- ##' Increasing the residual variance then leads to a better estimate of the -->
+<!-- ##' random effect term but can worsen the fixed effect term. -->
+<!-- ##' So in a gaussian model increasing the sigma increases the precision of the -->
+<!-- ##' random effect compononets. -->
+<!-- set.seed(101) -->
+<!-- dd$count_negbinom = unlist(simulate(~ 1+(1|subject), -->
+<!--               newdata = dd, -->
+<!--               newparams = list(beta= bet, theta =thet), -->
+<!--               family= negative.binomial(theta = 1))) -->
+<!-- fit_negbinom <- glmmTMB(count_negbinom ~ 1 +(1|subject), data = dd, -->
+<!--                         family = nbinom2) -->
+<!-- fixef(fit_negbinom);bet; getME(fit_negbinom,"theta");thet -->
+<!-- ##' theta = 1 is best here -->
+<!-- ``` -->
+
+

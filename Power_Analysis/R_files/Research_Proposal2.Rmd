@@ -1,0 +1,342 @@
+---
+title: "Longitudinal Microbiome Data Analysis"
+author: "Michael Agronah"
+#date: "2022-10-27"
+date: '\today'
+#date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    toc: true    # can remove
+    toc_depth: 3 # can remove
+    number_sections: true
+  highlight: zenburn
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{mathtools}
+- \usepackage{xcolor, hyperref}
+- \usepackage{lipsum}
+- \usepackage{caption}
+- \usepackage{diagbox}
+- \usepackage{multirow}
+- \usepackage{amsmath}
+- \setlength{\headheight}{28pt}
+- \setlength{\footskip}{25pt}
+- \pagestyle{fancy}
+- \renewcommand{\headrulewidth}{0.5pt}
+- \renewcommand{\footrulewidth}{0.5pt}
+- \lhead{\includegraphics[width=8cm,height=1cm]{logo-McMaster}}
+- \cfoot{School of Computational Science and Engineering \\ McMaster University}
+- \rhead{\thepage}
+- \hypersetup{colorlinks   = true, linkcolor=blue, urlcolor  = blue}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options:
+  chunk_output_type: console
+bibliography: packages.bib
+---
+
+\newpage 
+## Longitudinal Microbiome Data Analysis
+### Literature Review and Background
+#### Existing Models
+#### Some existing packages
+### Proposed research
+### Challenges
+### Simulation studies
+### Conclusion
+
+
+
+# Research Goals
+The goal of this project is to
+
+1. model the relationship between taxa abundances over time and covariate variables of interest (for instance, clinical and environmental factors such as age, groups or disease status of patients, among others), while accounting for the correlation structure between individual taxa within individual subjects. The unstructured correlation matrix, however, requires too many parameter estimates and is computationally infeasible for a typical ASV or OTU tables with thousands of taxa. Thus, a reduced rank latent variable model’s estimation of the structured correlation matrix will provide an understanding of the correlation between taxa on the community level.
+
+2. model how microbiome abundances change over time between groups and determine taxa with differential abundances over time between groups.
+
+# Methods
+## Model Description:
+The count data denoted by $Y_{ijt}$ is modeled by a negative binomial model defined as
+\begin{align}
+Y_{ijt} &\sim NB(mean = \mu_{ijt}, dispersion = \alpha_{it}),\\
+\boldsymbol\mu &= g^{-1}(E) \nonumber \\
+E &= X\beta + Zb,\,\,b \sim MVN(0, \Sigma) \nonumber
+\end{align}
+where $i,j$ and $t$ denote the $i^{th}$ taxa, $j^{th}$ sample and the $t^{th}$ time, respectively, and $Y_{i,j,t}$ denotes the count data for the $i^{th}$ taxa in the $j^{th}$ sample at time $t^{th}$. The function $g^{-1}$ is the link function and $\boldsymbol\mu$ is a vector of means with entries $\mu_{ijt}$.  $X$ and $Z$ are the fixed and the random effect model matrices respectively and $\beta$ is the fixed effect parameter. The vector $b$ is a multivariate deviate from a gaussian distribution with a variance covariance matrix $\Sigma$.
+
+
+Given an OTU table of dimension $n$, the parameters required to be estimated for $\Sigma$ are given by $n(n + 1)/2$. Thus, the number of parameter estimates for $\Sigma$ grows quadratically with $n$. For instance, a rare OTU table with 10 taxa only will require $55(=10*11/2)$ parameter estimates for $\Sigma$. Consequently, the typical OTU table with thousands of taxa will require millions of parameter estimates, which is computationally  impossible. Additionally, the unstructured covariance matrix $\Sigma$ is often singular due  to linear independence of the columns resulting in numerical instability and convergence problems of the fitting algorithms. A remedy is to use a latent variable model. This project applies a reduced rank latent variable model for estimating the structured covariance matrix. The reduced rank model expresses the columns of $\Sigma$ by a set of $r < n$ latent variables. The number of parameters required to be estimated for the reduced rank model with $r$ latent variables given by $2r + 1$, reducing the number of parameters to be estimated significantly to a linear function of $r$. In this project uses the estimation procedure implement in the *glmmTMB* package in R package.  Description of the estimation procedure is given in
+
+
+# Background
+## Introduction
+Longitudinal data arises when repeated measures are collected for the same subject. For example; DNA taking the microbiome of pregnant women repeatedly over a multiple time points. The literature of longitudinal microbiome investigations has generally respond mainly to  two queries: (1). to determine how microbiome abundances changes over time between groups (for example cases versus controls) [@lewis2015inflammation; @backhed2015dynamics], and 2. to investigate the relationship between microbiome abundances and other factors, for instance, environmental factors, clinical outcomes, etc) [@kodikara2022statistical; @chen2016two].
+
+Analyzing longitudinal microbiome data is challenging. First, In addition to the special propertes of overdispersion of microbiome data due to the variations in read depth and zero inflation,  repeated measurements exhibit correlation between observations taken from the same subject at various times points. Longitudinal data also often tend to have more missing data from a person or data not taken from everyone at all the time period studied [@kodikara2022statistical]. For instance, a longitudinal study collecting faecal specimens from patients may have missing data due to patients dropping out of the study during the period of the specimen collection.
+
+## Models used in the Literature
+Over-Dispersion Models, Zero-Inflated and Zero-hurdle Models, Dirichlet-Multinomial Models, and Multivariate Bayesian Mixed-Effects Model and other Mixed Models have been commonly used in the literature for microbome analysis [@xia2018statistical]. This section gives an overview of some of the common modeled fitted to microbiome data in the literature.
+
+### Over-dispersion
+Poisson and Negative Binomial distributions have been applied extensively for analyzing count data [@zhang2017negative]. A limitation however of the poisson distributions is that it assumes the mean equals variance and does not account for overdispersion in microbiome data [@anders2010differential]. Negative binomial models have been proposed to address the problem of overdispersion [@zhang2020nbzimm].    @zhang2017negative
+
+### Zero-inflation and Zero-hurdle Models
+Zero-Inflated Models and Zero-hurdle Models have been applied to address the problem of sparsity in microbiome data [@xia2018statistical ; @zhang2020nbzimm].  The hurdle model (also know as a two-part model), considers the data as comprising of zero and nonzero components and model the probability of obtaining a zero by a binomial distribution or a logistic regression model and the non-zero counts by a zero-truncated model such as a zero-truncated Poisson or zero-truncated negative binomial model. Zero inflation models (also known classified as a mixture model), on the other hand, considers the data as consisting of a count of components including rounded zeros and a second component for excess zeros. The excess zeros are modeled by the probability of expecting a zero under the considered distribution.
+
+Examples of zero-inflated and zero-hurdle models used in the literature for count data include zero-inflated Poisson (ZIP) and the zero-inflated negative binomial models (ZINB), zero-hurdle Poisson (ZHP) and the zero-hurdle negative binomial models (ZHNB) [@xia2018statistical]. The zero-inflated beta regression models have been used for proportion data [@xia2018statistical]. Zero-inflated Gaussian models have also been proposed for modelling either count or proposition data ([Kodikara et al., 2022, p. 7](zotero://select/library/items/DC2RYXZV)). @paulson2013differential, for instance, developed a zero-inflated Gaussian model using the logtransformation on the read counts to address the problem of excessive zeros. An empirical Bayes method  was used to estimate the moderated variances in the model. @peng2016zero and @ospina2012general  also developed the zero-inflated beta regression model and the zero-or-one inflated beta regression model, respectively, for proportion data.
+
+### Dirichlet-Multinomial Models
+More recently developed model for the analysis of microbiome data are the multinomial and  Dirichlet-Multinomial Models [@xia2018statistical; @holmes2012dirichlet]. The multinomial and Dirichlet-multinomial distributions are the commonly used parametric probability models [@la2012hypothesis; @holmes2012dirichlet]. @holmes2012dirichlet developed a Dirichlet multinomial mixtures model for classification and clustering otus of microbiome samples.  A reparameterized Dirichlet multinomial model was developed by @la2012hypothesis to test the hypothesis of mean abundances as well as scales (variance comparison/dispersion) between groups. This model is implemented in the **HMP** package in R.
+
+### Multivariate Bayesian Mixed-Effects Model
+
+*Multivariate Bayesian Mixed-Effects Model. Grantham et al. 2019 propose a Bayesian mixedeffects model to analyze microbiome data.*
+
+*MIMIX performs spike-and-slab variable selection to identify treatment effects on OTUs.  Bayesian factor analysis with a Dirichlet-Laplace prior clusters OTUs into different factors.  MIMIX is not currently suited for handling data from longitudinal studies*
+
+
+### Models for longitudinal data analysis
+Mixed models have been used for modeling longitudinal data in the literature.
+
+#### Zero-inflated beta regression Model
+To test the relationship between microbial abundance and clinical covariates in longitudinal microbiome data, @chen2016two developed a two-part zero-inflated Beta regression model with random effects (ZIBR). The model consists of a logistic regression component to model the presence/absence of a microbe in the samples, and a Beta regression component to model non-zero microbial abundance, with each component containing a random effect. One of ZIBR's strengths is its ability to account for the sparse nature of the data. However, within-subject correlation structure is not accounted for in the model [@zhang2020zero].
+
+#### Negative binomial Mixed Model
+In order to identify correlations between microbial counts and covariates (such as therapy, age, dietary habits, etc.) while taking into account temporal patterns in microbial abundance within and between patients, the negative binomial mixed model (NBMM) was devised [@zhang2018negative]. This NBMM is flexible and allows the inclusion of many other covariates limitation. NBMM is able to handle overdispersion and has also accounts for varying read depth by including an offset term. Unlike ZIBR, NBMM accounts for correlation structures among observations from the same subject.
+
+#### Zero-inflated Gaussian mixed models
+ZIGMM is a mixture model involving two components; a logistic regression component and a Gaussian regression component. The model is flexible and can fit both count and proportion data. square root arcsine transformation is used to transform relative abundance and Count data are transformed by the log-ratio transformation log base 2. … showed from a simulation studies that the ZIGMM outperformed ZIBR and ZINBMM and that the estimation method used is computationally efficient compared to those used in ZIBR and ZINBMM. The method accounts for the correlations within the repeated observations in samples using  AR(1) or continuous-time auto-regressive of order 1. The method is implemented in the NBZIMM R package.
+Just like … and …ZIGMM is also univariate and does not account for the complex interactions between taxa , which could provide more insight into the microbiome. *Another problem is that is it is be slow for high dimensional data.-Explore this*
+
+
+
+A limitation of all the above-mentioned models is that they are all univariate and do not account for the complex interactions between taxa , which could provide more insight into the microbiome.
+
+
+
+# Objective
+*The first objective is to study how microbial abundance changes over time between groups of interest (e.g. cases versus controls, disease or treatment groups, Figure 1A, and how the association between microbial abundance and other factors such as clinical outcomes, disease or treatments change over time [7]. In this context, both time and differences between patients or individual groups may be of interest.*
+
+*Identification of microorganisms with differential abundance over time, between groups and between both group and time*
+
+
+Other multivariate methods have been used in other fields to analyiss high dimensional co
+
+## Packages
+The R packages pscl, mgcv, brms, gamlss, GLMMadaptive, and glmmTMB can be used to analyze over-dispersed or sparse count data [@zhang2020nbzimm]. The package pscl has a function zeroinfl() for fitting ZIP and ZINB, and the function hurdle() for fitting ZHP and ZHNB [@jackman2015package].  The package cannot handle fitting longitudinal data. metagenomeSeq analyzesmicrobiome data presented as proportion using a zero-inflated Gaussian mixture model [@joseph2013robust]. metagenomeSeq can also be used for longitudinal differential abundance analysis using smoothing splines [@paulson2017longitudinal].
+
+**BhGLM**
+**NBMMs**
+
+These models, however, do not handle repeatedly measured proportion data such as the longitudinal data considered in this paper. Furthermore, extending these methods to include random effects is not trivial.
+
+
+
+# Challenges
+
+
+# Simulation Studies
+
+
+
+## Data Simulation
+Using the simulate function in *lme4*, we generated count data from a generalised linear mixed model with a negative binomial distribution. The simulation's parameters are displayed in Table \ref{tab:simPara}. The plot of the trajectory for three taxa from the simulated data is shown in Figure \ref{fig:explore}. The simulated data was splitted into $80\%$ training set and $20\%$ test set. A rank reduced rank random slope model with time nested in subjects as the grouping variable, taxa as the random effect and groups and the interaction between group and time as the fixed effect variable was fitted to the data. The optimal dimension of 3 for the reduced rank was determined by comparing the AICs of the model fitted to dimensions ranging from 2 to 10. Table \ref{aic} displays the AIC values and dimensions.
+
+
+```{r load_pkgs2, include=FALSE, echo=FALSE,message=FALSE}
+library(ggplot2)
+library(dplyr)
+## uses denovo_simulation branch
+library(glmmTMB)
+library(MASS)
+## remotes::install_github("chvlyl/ZIBR")
+library(ZIBR)
+## remotes::install_github("nyiuab/NBZIMM")
+library(NBZIMM)
+## library(splinectomeR)
+library(lme4)
+library(patchwork)
+```
+
+```{r simulatedata2,echo=FALSE,message=FALSE,warning=FALSE }
+set.seed(101)
+nIndiv <- 10; nTime <- 5; nTaxa <-100
+metadat <-function(nIndiv,nTime,nTaxa){
+  dd <- expand.grid(subject = factor(1:nIndiv),
+                  taxa =factor(1:nTaxa), time = (1:nTime))
+
+  grp = (rep(factor(c("control", "treatment")),length.out=nIndiv))
+  dd$group <- grp
+  dd
+}
+
+metadata =metadat(nIndiv,nTime,nTaxa)
+
+Theta_fun <- function(nTaxa){
+  rowIndices <- rep(1:nTaxa, 1:nTaxa); colIndices <- sequence(1:nTaxa)
+  template <- sparseMatrix(rowIndices, colIndices, x =
+                           if_else(rowIndices==colIndices,1,0))
+template@x
+}
+thet <- Theta_fun(nTaxa)
+
+
+Beta <- c(1, 0.2, 0.1, 0.2)
+
+sim <- function(dispersion,data=metadata,bet=Beta, Theta = thet,n=nIndiv){
+ p  = simulate(~group*time+(-1 + taxa|subject),
+              newdata = data,
+              newparams = list(beta= bet, theta =Theta),
+              family=negative.binomial(theta=dispersion))
+ data$count = unlist(p)
+ data
+}
+
+dd =sim(dispersion = 2)
+training <- dd[dd$time < floor(nTime*0.8),]
+test <- anti_join(dd, training, by='time')
+```
+
+<!-- Should I be comparing these 2 directly or do I need to do some conversions before comparing? -->
+
+```{r fitmodel,include = TRUE, eval=FALSE, echo=TRUE,message=FALSE,warning=FALSE, fig.height = 3}
+fit <- glmmTMB(count ~ group*time+ rr(-1 + taxa|subject,7),  data = dd, family = nbinom2)
+```
+
+1. It is not worth perusing, but if I am asked, I can say I did it. 
+
+
+```{r fitmodel,include = TRUE, eval=FALSE, echo=TRUE,message=FALSE,warning=FALSE, fig.height = 3}
+fit_list <- lapply(2:10,
+                   function(d) {
+                     fit.rr <-
+                     glmmTMB(count ~ group*time+ rr(-1 + taxa|subject,d = d),
+                                              data = dd, family = nbinom2)
+                       })
+
+# compare fits via AIC
+aic_vec <- sapply(fit_list, AIC)
+aic_vec - min(aic_vec, na.rm = TRUE)
+```
+
+\begin{table*}[h]
+  \centering
+  \caption{Parameter values used in data simulation}
+    \begin{tabular}{l|cc}
+          \multicolumn{1}{p{4.75em}}{\textbf{Effects}} & \multicolumn{1}{l}{\textbf{Other parameters}}  \\
+          Intercept = 1 & Number of subjects = 20\\
+          Group = 0.2   & Number of Taxa = 100 \\
+          Time  =0.1   & Length of Time  = 10\\
+          Group*Time = 0.2  &  Number of Groups = 2  \\
+          Dispersion parameter = 2 & Random effect parameter ($\theta$) = Identity \\
+    \end{tabular}%
+  \label{tab:simPara}%
+\end{table*}
+
+```{r plot, echo=FALSE,message=FALSE,warning=FALSE, fig.show='hold', fig.cap="\\label{fig:explore} Some simulated taxa profiles with time, group and group * time effects and 0.2 dispersion", fig.fullwidth=FALSE,fig.align = 'center', fig.height = 3}
+
+p1<-dd[dd$taxa ==1,] %>%
+    ggplot(aes(x=time, y=log(count),  colour= (group),
+             group = (subject), shape= (group),
+             linetype = (group)))+
+    geom_line()+ geom_point()+ggtitle("Taxa 1")+ylab("Count (log scale)")+
+    labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") +
+    scale_color_manual(values=c("steelblue","darkviolet"))+
+    theme(legend.position = "none")
+
+p11<-dd[dd$taxa ==2,]  %>%
+    ggplot(aes(x=time, y=log(count),  colour= (group),
+             group = (subject), shape= (group),
+             linetype = (group)))+
+    geom_line()+ geom_point()+ggtitle("Taxa 2")+ylab("Count (log scale)")+
+    labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") +
+    scale_color_manual(values=c("steelblue","darkviolet"))+
+    theme(legend.position = "none")
+
+p111<-dd[dd$taxa ==3,]  %>%
+  ggplot(aes(x=time, y=log(count),  colour= (group),
+            group = (subject), shape= (group),
+              linetype = (group)))+
+     geom_line()+ geom_point()+ggtitle("Taxa 3")+ylab("Count (log scale)")+ 
+     labs(y = "count (log scale)", linetype = "Group", shape = "Group", color="Group") + 
+     scale_color_manual(values=c("steelblue","darkviolet"))+ 
+   theme()
+ p1|p11|p111
+```
+
+
+
+# What I am studying: The impact of covariates on the data 
+UNderstand the difference between multivariate and univariate metho
+
+What am L doing with ny model, what does my model be used for what will my model be used for. Speak to Dr Stearn. What would my model be used for, what would my model 
+ It is 
+ What would the model be useed for? 
+
+
+
+## What I will be doing
+
+1. Fittingthe model itself.
+2. I will be doing goodness of fit test
+3. I will be shrinking the estimates and comparring the results with NZZBIM and other existing models
+4. I will be doing model inferenceings
+5. Find a way to do ordination plots and how to interprete it
+
+
+# Ideas for solving the 3rd (sample size calculation) question
+Give a specified range for effect sizes and parameters for simulating control abundances, effect sizes and control abundances with be simulated from a truncated Cauchy distribution and a skewed normal restively using different number of sample sizes (example 10, 20 and 30) per group. Power estimates will be computed for each of sample size to determine the range of power in each case. We speculate that as numbers of sample sizes increases will lead to wider ranges power accross abundances.
+
+
+
+I will be doing the that have been used in the analysis of microbiome data
+
+
+
+1. The gllvm packge
+What are some of the advanges of the pack
+
+Severeal modelds ha
+@niku2017generalized p. 498 applied a generalized linear latent variable model to fitting microbiome data. The
+
+variable to account for covariation between species and correlation and applied it to the model metagenomic dataset. This  generalized linear latent variable model is implemented in the gllvm package in R and can be used for fitting longitudinal data.
+
+The algorithm used in the model-fitting is fast and can handle much larger datasets ()MLE and avoids MC estimations. Thus it can handle large datasets relatively quicker than other existing packages. Secondly, it uses a maximum likelihood framework, which allows the use of likelihood-based tools for inferencing.  A limitation however, of gllvm is that it does assume observations are independent and thus does not account for correlation. Also, it does not include random slopes for predictors, which could enhance the account for the interspective variations in the responses.
+
+The gllvm package implements generalised linear latetnt variable for modelling microbiome gene data. The latent variable component is used to capture the covariation between species not accounted for by the predictors. A key advantage of this package is that is computational speed and its ability to handle large datasets.
+
+gllvm has been recently been update with the capacity to include random slope component to the GLLVM models, which was not there previously.  to capture variation in environmental response not captured by the trait model.” ([Niku et al., 2019, p. 2180](zotero://select/library/items/MR4UUDLW))
+
+The packege has various functionality for statistical inference, model visualization and model selection (AICs). Give examples
+The used what is known as maximises the log-likelihood using the Gaussian variational approximations (VA, Hui et al., 2017) for overdispersed counts, binary and ordinal responses, or using Laplace approximations (LA, Niku et al., 2017) for other exponential family distributions when a fully closed form variational” ([Niku et al., 2019, p. 2175](zotero://select/library/items/MR4UUDLW)). It has functionality for modeling poision, NZ and ZIP for count data. It uses automatic differentiation in C++ and has carfully chosen startign values
+
+The corresponding ordination plot then provides a graphical representation of which sites are similar in terms of their species composition.” (Niku et al., 2019, p. 2176)
+# Special features of microbiome data that makes it difficult to analyse
+Microbiome data have several features. Microbiome count data, i.e., OTU counts, taxa abundance, are naturally constrained, high dimensional, sparse with containing a large proportion of zero counts in the OTU(Taxa) table, complex covariance and correlation structures among different OTUs(taxa), and over-dispersed with large within-group heterogeneities.
+
+<!-- ## what problems do each of them cause and how have they been addressed in the literature. -->
+
+
+# Possible Extentions
+# Timeline
+## Time Line
+1. March 1st - May 30th Goal: Write up results from the Power project and submit work to a journal for publication.
+
+Detailed Steps
+a. Answer question 3: March 20th - April 10th
+b. Write up results for question 3 and the entire work April 10th - April 12th
+c. Submit write-up to a journal for publication April 12th - April 20th
+
+2. May 20th - July 20th.
+
+a. Get all my results for longitudinal project part 1 and write it up and hand it in for publication in
+b.
+c.
+
+3. August - October Research on part 2 of longitudinal project  and get all my results down and then write up and hand it in for publication
+
+4. Design package...d. Write an R package for the power analysis project  April 20th - May 30th
+
+4. November to December, writing up the R packages for chapters 1 and 2 and  is to apply of jobs attend conferences and present in conferences and to write up all my thesis. My thesis must be done and handed in by Febuary 20th.
+
+
+# Conclusion

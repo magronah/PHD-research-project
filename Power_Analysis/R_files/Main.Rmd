@@ -1,0 +1,43 @@
+---
+title: "Comprehensive Exam II: Report"
+author: "Michael Agronah"
+#date: "2022-10-27"
+date: '\today'
+#date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    toc: true    # can remove
+    toc_depth: 3 # can remove
+    number_sections: true
+  highlight: zenburn
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{mathtools}
+- \usepackage{xcolor, hyperref}
+- \usepackage{lipsum}
+- \usepackage{longtable}
+- \usepackage{caption}
+- \usepackage{diagbox}
+- \usepackage{multirow}
+- \usepackage{amsmath}
+- \setlength{\headheight}{28pt}
+- \setlength{\footskip}{25pt}
+- \pagestyle{fancy}
+- \usepackage{tabularx}
+- \renewcommand{\headrulewidth}{0.5pt}
+- \renewcommand{\footrulewidth}{0.5pt}
+- \lhead{\includegraphics[width=8cm,height=1cm]{logo-McMaster}}
+- \cfoot{School of Computational Science and Engineering \\ McMaster University}
+- \rhead{\thepage}
+- \hypersetup{colorlinks   = true, linkcolor=blue, urlcolor  = blue}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options: 
+  chunk_output_type: console
+bibliography: packages.bib
+---
+
+```{r child = 'Power_Project/R_files/project_power.Rmd'}
+```
+
+```{r child = 'Power_Project/R_files/project_longitudinal.Rmd'}
+```

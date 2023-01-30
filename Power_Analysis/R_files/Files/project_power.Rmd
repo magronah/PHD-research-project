@@ -1,0 +1,302 @@
+---
+title: "Power Analysis of Microbiome Data"
+author: "Michael Agronah"
+#date: "2022-10-27"
+date: '\today'
+#date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    toc: true    # can remove
+    toc_depth: 3 # can remove
+    number_sections: true
+  highlight: zenburn
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{mathtools}
+- \usepackage{xcolor, hyperref}
+- \usepackage{lipsum}
+- \usepackage{caption}
+- \usepackage{diagbox}
+- \usepackage{multirow}
+- \usepackage{amsmath}
+- \setlength{\headheight}{28pt}
+- \setlength{\footskip}{25pt}
+- \pagestyle{fancy}
+- \renewcommand{\headrulewidth}{0.5pt}
+- \renewcommand{\footrulewidth}{0.5pt}
+- \lhead{\includegraphics[width=8cm,height=1cm]{logo-McMaster}}
+- \cfoot{School of Computational Science and Engineering \\ McMaster University}
+- \rhead{\thepage}
+- \hypersetup{colorlinks   = true, linkcolor=blue, urlcolor  = blue}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options:
+  chunk_output_type: console
+bibliography: packages.bib
+---
+
+```{r load_pkgs, include=FALSE, message=FALSE}
+library(ggplot2)
+library(fitdistrplus)
+library(truncnorm)
+library(BiocManager)
+if (FALSE) BiocManager::install(c("DESeq2", "edgeR"))
+library(nlme)
+library(truncdist)
+library(DESeq2)
+library(tidyverse)
+library(bbmle)
+library(patchwork)
+library(truncdist)
+library(plyr)
+library(metR)  
+library(mgcv)
+library(ggplot2)
+library(patchwork)
+library(extraDistr)
+library(here)
+setwd(here())
+theme_set(theme_bw())
+```
+\newpage
+\section*{Summary}
+There are two parts to this document. The first section, "Investigating the Power of Differential Abundance Microbiome Studies", aims to create a framework for comprehending how power, effect sizes, and abundances relate in differential microbiome abundance studies. A Multivariate Negative Binomial Mixed Model (MNBMM) is proposed in Part 2 as a model for examining trends in longitudinal microbiome data while accounting for the correlation structure between observations from individual subjects across time. MNBMM has the capability to handle overdispersion in microbiome data and can  be used to model the relationship between longitudinal data and factors of interest such as age, disease status and groups.
+
+# Investigating the Power of Differential Abundance Microbiome Studies
+## Abstract
+Microbiome studies are generally underpowered. Consequently, significance results reported in the literature can be misleading. Furthermore, the dynamics underlying the relationships among effect sizes, power and abundances in differential abundance studies is unclear. The ability to predict, even before the commencement of a research, how many species a researcher can reliably detect power for is an important question in differential abundance studies. This project seeks to develop a paradigm for understanding the relationships among effect sizes, power and abundances as well as the underpinning mechanism driving these relationships.
+
+We investigate these relationships using ten (10) 16S microbiome datasets from children with autism spectrum disorder (ASD) (as treatment group) and neurotypical children (as control group).  Effect size in this study is defined by log2 fold changes and control is used to refer to log2 control abundances. An R package will be developed from this project where new datasets can be fed into this package to explore the power,  effect and abundance relationships.
+
+<!-- The findings demonstrated that the effect size distributions followed a cauchy distribution, which defines the variance defined as a quadratic function of control abundances. -->
+
+## Introduction
+A key question in differential abundance studies is to determine differences in microbiome abundance between various groups of interest. For instance, what are the differences between microbiome abundances in control and treatment groups? This question can be translated into a hypothesis testing problem. The standard procedure in hypothesis testing is to first define a null hypothesis and then choose a significant level. The test rejects the null hypothesis whenever $p$-value is below the significant level and fails to reject the null hypothesis whenever $p$-value is above the significant level. This technique has two potential drawbacks. First, failing to reject the null hypothesis when the $p$-value is greater than the null hypothesis merely by accident. This results in what is known as the Type 1 error or the false positive error. The second drawback is rejecting the null hypothesis when the $p$-value is less than the significant level merely by chance, known as Type 2 error or false negative error.
+<!-- These errors are illustrated in figure \ref{}. -->
+
+Hypothesis testing depends on 4 parameters: (i) the effect size: a measure of the magnitude of differences between groups of interest; (ii) the sample size $(n)$: the number of samples to be used in the studies; (iii) the power of a study ($1 - \beta$): the probability of correctly rejecting the null hypothesis; and (iv) the confidence level ($\alpha$): the probability of getting a false positive, that is, rejecting the null hypothesis when it is actually true. In general, power, sample sizes, significance level and effect size are positively related. For example, increasing the significance level increases power and a higher effect size will generally lead to higher power [@xia2018statistical]. Power studies are important to minimize Type 1 and Type 2 errors [@xia2018statistical] and to determine the success of a study design even before commencing. In many funding applications, power analysis on a simulation study is required to evaluate how many sample sizes are needed to detect a given effect sizes and power of the studies.
+
+<!-- It also helps to see whether a study will be successful before you even begin the studies.  -->
+
+
+<!-- [(#fig:bar) Illustration of Type 1 and Type 2 errors. Image source: [Graduatetutor](https://www.graduatetutor.com/statistics-tutor/type-1-type-2-errors-hypothesis-testing-statistics).](error.png) -->
+
+The majority of microbiome studies, however, are underpowered [@kers2021power; @brussow2020problems]. Consequently, significance results reported in the literature of differential abundance microbiome studies are influenced by Type 1 and Type 2 errors. Failure to correct for these errors has resulted in numerous instances of conflicting conclusions reported in the literature of differential abundance microbiome studies [@brussow2020problems]. Early research on the relationship between the gut microbiota of obese and non-obesity groups for instance, found significant differences in the diversity of the gut microbiota and significant differences in the Bacteroidetes/Firmicutes (B/F) ratio between obese and non-obese people [@ley2006human]. Later research conducted using larger samples found only slight differences in microbial diversity and no statistically significant change in the B/F ratio between non-obese and obese individuals [@sze2016looking]. This problem makes it challenging to reproduce findings from microbiome studies reported in literature [@kers2021power]. Due to the failure to correct Type1 and Type 2 errors, an average effect size and power of studies in the literature of differential abundance microbiome studies is unknown. Thus, it difficult to make informed decisions for conducting a power analyis of a design prior to commencing a study.
+
+<!-- One potential remedy is to gain a better understanding of the relationships between power effect size and abundances in differential abundance microbiome studies as well as the mechanisms underlying these relationships. This project seeks to develop a framework for understanding these relationships among effect sizes, power and abundances as well as the underpinning mechanism driving these relationships.  -->
+
+One potential remedy is to gain a better understanding of the relationships between power, effect size and abundances in differential abundance microbiome studies. This project seeks to develop a paradigm for understanding the relationships among effect sizes, power and abundances as well as the underpinning mechanism driving these relationships.  Using this framework from this project, a new dataset can be explored to determine the relationships between power,effect size and abundance in the context of differential abundance studies.
+
+<!-- One possible solution is to conduct a power analysis before beginning the studies. -->
+<!-- The typical effect sizes to use when conducting power analysis, on the other hand, are unknown. The ability to determine how many samples are required to detect a certain level of power given an effect size is of great interest in microbiome studies. -->
+<!-- Also, before beginning a study, one would typically like to know how many taxa they can reliably detect power for. -->
+
+
+## Research goals
+
+The goal of this project is to
+
+1. investigate the relationships among power, effect sizes and abundances with the aim of understanding the mechanisms behind these relationships.
+
+2. investigate the number of individual taxa in a differential abundance
+studies that power can be detected reliably, for a given effect and sample size.
+
+3. investigate the number of sample sizes required to detect a given power and a given effect size.
+
+
+
+## Research Design and Methodology
+
+### Data collection and processing
+Using the search terms *"autism[All Fields] AND 16S[All Fields]"*, *"autism[All Fields] AND 16S[All Fields] AND Fecal[All Fields]"*, raw sequence data from 10 projects that examined the microbiome of children with autism spectrum disorder were gathered from the European Nucleotide Archive [(EBA)](www.ebi.ac.uk) and the National Center for Biotechnology Information [(NCBI)](https://www.ncbi.nlm.nih.gov/). The following are the accession numbers for the 10 projects in the NCBI and ENA archives: PRJNA687773, PRJNA624252, PRJNA453621, PRJNA642975, PRJNA355023, PRJNA168470, PRJNA644763, PRJNA578223, PRJNA589343, and PRJEB45948. Children with autism spectrum disorders represent the treatment group in these datasets whereas neurotypical children are the control groups. Adaptor and primer sequences were removed using "**cutadapt**" function implemented in a bash script. The trimmed sequence from the "**cutadapt**" were then processed into Amplicon Sequence variants (ASVs) data using the **Dada2** pineline which involves filtering and trimming, error estimation, denoising, merging paired reads and chimeras removal [@chen2020gut].
+
+## Method
+### Model description
+The null hypothesis ($H_0$) and the alternative hypothesis ($H_a$) for testing differences between 2 groups (control and treatment) is formulated as  
+\begin{align}
+H_0: \mu_{C} - \mu_{T} = 0  \\
+H_a: \mu_{C} - \mu_{T} \neq 0,
+\end{align} where $\mu_{C}$ and $\mu_{T}$ denote the mean counts in control and treatment groups respectively. Effect sizes,a measure of the difference in the mean can then be tested.  The negative binomial distribution has often been used to model microbiome count data due to the presence of overdispersion in microbiome count data.
+
+Let $K_{ij}$ denote the count data for the $i^{th}$ taxa in the $j^{th}$ sample.  $K_{ij}$  is modeled by  negative binomial distribution defined  by
+\begin{align}
+K_{ij} \sim NB(mean &= \mu_{ij}, dispersion = \alpha_i), \\
+\mu_{ij} &= g^{-1}(E_{ij})\\
+E_{ij} &= \sum_r x_{jr}\beta_{ir} ,
+\end{align}
+where $g$ is a link function, $\beta_{ir}$ are estimates of the effect sizes and $x_{jr}$ are the covariates. The relationship between the variance of counts and the dispersion is given by $Var K_{ij} = \mu_{ij} + \alpha \mu_{ij}^2$. In this project, the estimating procedure implemented in the **DESeq2** package in R is used for estimating $\beta_{ir},\mu_{ij}$ and $\alpha_i$. Details concerning this procedure are explained in the paper by @love2014moderated and by @anders2010differential.
+
+```{r load_data, include=FALSE, message=FALSE, echo=FALSE}
+path <- "Power_Project/Datasets/"
+plot_path <- "Latex_Files/Proposal/Figs/power/"
+source("Power_Project/R_files/Functions.R")
+
+plotname <- "box_plot_effects_"
+#########################################
+data_list <- mget(load("Power_Project/Datasets/data.RData"))
+metadata_list <- mget(load("Power_Project/Datasets/groups.RData"))
+name <- names(metadata_list); stopifnot(names(data_list) == name)
+############################################################
+subset <- c("PRJNA453621","PRJEB45948","PRJNA589343", "PRJNA687773")
+names(subset) <- subset
+data_list <- list(data_list[["PRJNA453621"]], data_list[["PRJEB45948"]],
+                  data_list[["PRJNA589343"]], data_list[["PRJNA687773"]])
+
+metadata_list <- list(metadata_list[["PRJNA453621"]],
+                      metadata_list[["PRJEB45948"]],
+                      metadata_list[["PRJNA589343"]],
+                      metadata_list[["PRJNA687773"]])
+
+names(data_list) <- names(subset)
+names(metadata_list) <- names(subset)
+name = names(subset)
+######################################################################
+DeseqRes <- mget(load(paste0(path,"DeseqResults.RData"))) #list of deseq results
+deseq_list <- DeseqRes[[names(DeseqRes)]]   #extra Deseq data from the list
+stopifnot(names(deseq_list) == name)
+
+Control_Treat <- mget(load(paste0(path,"Control_Treat_Data.RData"))) #list of deseq results
+Control_Treat <- Control_Treat[[names(Control_Treat)]]
+stopifnot(names(Control_Treat) == name)
+
+param.disp <- mget(load(paste0(path,"Dispersion_Parameters.RData")))
+param.disp <- param.disp[[names(param.disp)]]
+
+logcontrol <- read_data(Control_Treat, "LogControl") #extract control mean datasets from the list
+```
+
+### Investigating the relationship between control abundances and effect sizes
+The analysis presented in part 1 of this document is based on 4 of the 10 datasets. These 4 datasets are those with the assession numbers PRJNA453621, PRJEB45948,PRJNA589343 and PRJNA687773.  Plots of the relationship between control abundances and effect sizes are shown in figure \ref{cont_eff}. The plots display an average effect size of zero. Variations around the smooth curve are greatest in the middle and lowest at the ends of the smooth curves. Thus, a quadratic function can be used to describe the variance of the effect sizes as a function of control abundances. A truncated normal distribution and a cauchy distribution, respectively, can be used to approximate the distribution of control abundances and effect sizes. Figure \ref{fit_con} and figure \ref{fit_eff} show a histogram and density of the control abundance and effect sizes, as well as a plot of the density from simulation from fitting these distributions to the data. Effect sizes were fitted to Cauchy distributions with zero location and scale parameters defined by a quadratic function of control abundance, as shown in equation \ref{eq1}.
+\begin{align} \label{eq1}
+y_i &= Cauchy(location = 0, scale = \gamma_i), \gamma_i =  \exp(k_0 +  k_1x_i + k_2x_i^2),
+\end{align}
+where $y_i$ and $x_i$ are the effect size and control abundance, respectively, for the $i^{th}$ taxa and $k_j ; j = 1, 2, 3$ are constants to be estimated.
+```{r control_effects, echo=FALSE, warning=FALSE, message=FALSE, out.width="60%",fig.align="center", fig.cap="\\label{cont_eff}  Plot of control against effect sizes for datasets with assession numbers PRJNA453621, PRJEB45948, PRJNA589343 and PRJNA687773", fig.height = 5}
+m=Plot_ContEffects(deseq_list,logcontrol, plot_path)
+(m[[1]]|m[[2]])/(m[[3]]|m[[4]])
+```
+
+```{r control_fits, warning=FALSE, message=FALSE, echo=FALSE,out.width="60%",fig.align="center", fig.cap="\\label{fit_con} Histogram and density plots for control abundances and density from a simulated sample from fitting a truncated  normal distribution"}
+file_path <- "control_histograms_"
+v1 = Fit_control(logcontrol,plot_path,file_path, plotname)
+v1 = (v1[[1]]|v1[[2]])/(v1[[3]]|v1[[4]]) & theme(legend.position = "bottom")
+v1 + plot_layout(guides = "collect")
+```
+
+```{r effect_fits, warning=FALSE, message=FALSE, echo=FALSE,out.width="70%",fig.align="center", fig.cap="\\label{fit_eff} Histogram and density plots for effect sizes"}
+param.control <- mget(load(paste0(path,"Control_Parameters.RData"))) #lis lts
+param.control <- param.control[[names(param.control)]]
+
+effects_list <- mget(load(paste0(path,"DeseqFoldChanges.RData")))
+effects_list <- effects_list[[names(effects_list)]]
+
+plotname  <- "effects_dist_"
+v = Fit_Effects(effects_list,logcontrol,plot_path,plotname)
+vv = (v[[1]]|v[[2]])/(v[[3]]|v[[4]]) & theme(legend.position = "bottom")
+vv + plot_layout(guides = "collect")
+```
+
+
+```{r heatmap_plot,warning=FALSE, message=FALSE, echo=FALSE}
+#################################################################
+n_otu <- 1000; n_samples <-  100; n_sim = 200
+param.effects <- mget(load(paste0(path,"Effect_Parameters.RData")))
+param.effects <- param.effects[[names(param.effects)]]
+#data_sim(param.effects,param.disp,param.cont=param.control,n_sim,n_samples,n_otu,path,filter=10)
+sim_data_list <- mget(load(paste0(path,"Simulated_Data.RData")))
+sim_metadata_list <- mget(load(paste0(path,"Simulated_Metadata.RData")))
+true_control_list <- mget(load(paste0(path,"True_Control.RData")))
+true_effect_list <- mget(load(paste0(path,"True_Effect.RData")))
+standard_err_delta_list <- mget(load(paste0(path,"Standard_Err_Delta.RData")))
+
+standard_err_delta_list = standard_err_delta_list[[names(standard_err_delta_list)]]
+
+sim_data_list = sim_data_list[[names(sim_data_list)]]
+sim_metadata_list = sim_metadata_list[[names(sim_metadata_list)]]
+true_control_list = true_control_list[[names(true_control_list)]]
+true_effect_list = true_effect_list[[names(true_effect_list)]]
+###############################################################
+#Deseq1(sim_data_list,sim_metadata_list,path)
+deseq_data_list <- mget(load(paste0(path,"Sim_Deseq_RESULT.RData")))
+deseq_data_list <- deseq_data_list[[names(deseq_data_list)]]
+
+#########################################################
+combined_data =combined_data_list(true_control_list, true_effect_list,
+                                 deseq_data_list,standard_err_delta_list, alpha=0.1)
+r = Power_Heatmap(combined_data); plts1 = r[["full_plot"]]; plts2 = r[["reduced_plot2"]]
+
+#b = (plts1[[1]]|plts1[[2]]) & theme(legend.position = "bottom")
+#b + plot_layout(guides = "collect")
+
+#b =(plts1[[3]]|plts1[[4]])  & theme(legend.position = "bottom")
+#b + plot_layout(guides = "collect")
+```
+
+
+\newpage
+## Results
+Figure \ref{fit_heat} displays heatmaps of the power and total control abundances (on the non-log scale) for different ranges of control abundances and effect sizes. In each plot, regions with total control abundances less than 100 have been filtered out.
+
+Figure \ref{fit_heat1} shows a contour plot illustrating how power changes with control abundances and effect sizes. Apart from the plot on the bottom left hand corner where power increases systematically with increasing effects in the region of the data points, all other plots show an initial increase or decrease in power, a peak around the center of the plot and then decrease or increase thereafter. These patterns may be better understood by standardizing the effect sizes to account for errors in the fold change estimates.
+
+The delta method with a first order taylor series approximation was used to estimate the standard errors of the effect size estimates. The contour plot with standardized effect size is shown in figure \ref{fit_heat2}. The plot at the top left corner of figure \ref{fit_heat2} shows increasing power with increasing standardized effect sizes, whereas all other  plots show an initial increase in power as standardized effect increases and a later decrease in power. A higher order approximation of the delta method for calculating the standard error may result in uniformity in these patterns. This will be the next focus of this project.
+
+```{r heatmp_contour1, warning=FALSE,fig.width=17, fig.height=12, message=FALSE, echo=FALSE,fig.cap="\\label{fit_heat} Heatmap showing the power and total control abundances for various ranges of control and effect sizes"}
+combined_data <- mget(load("Power_Project/Datasets/combined_data_list.RData"))
+combined_data <- combined_data[[names(combined_data)]]
+r = Power_Heatmap(combined_data)
+plts1 = r[["full_plot"]]; plts2 = r[["reduced_plot2"]]
+
+b = ((plts2[[1]]|plts2[[2]])/(plts2[[3]]|plts2[[4]])) & theme(legend.position = "bottom")
+b + plot_layout(guides = "collect")
+```
+
+<!-- Figure \ref{fit_heat1} shows the contour plot powers at various regions of effect sizes and control abundances.  -->
+
+```{r contur, warning=FALSE, message=FALSE, echo=FALSE,fig.width=14, fig.height=12,fig.cap="\\label{fit_heat1} Contour plot showing changes in power in relation to control abundances and effect sizes"}
+pr =contour_plots(combined_data,
+                  interval=c(0.001,0.0005,0.001,0.001))
+
+n = (pr[[1]][["contour_plot"]]|pr[[2]][["contour_plot"]])/(pr[[3]][["contour_plot"]]|pr[[4]][["contour_plot"]]) & theme(legend.position = "bottom")
+n + plot_layout(guides = "collect")
+```
+
+```{r contour, warning=FALSE, message=FALSE, echo=FALSE,fig.width=14, fig.height=12,fig.cap="\\label{fit_heat2} Contour plot showing changes in power in relation to control abundances and standardized effect sizes"}
+pr =contour_plots(combined_data, standardised = TRUE,
+                  interval=c(0.005,0.0005,0.005,0.005))
+
+n = (pr[[1]][["contour_plot"]]|pr[[2]][["contour_plot"]])/(pr[[3]][["contour_plot"]]|pr[[4]][["contour_plot"]]) & theme(legend.position = "bottom")
+n + plot_layout(guides = "collect")
+```
+
+\newpage
+## Conclusion
+
+In conclusion, this project seeks to understand the relationships among power, effect size and control abundances. Investigation of the relationship between control abundances and effect sizes show that there is an average effect size of zero across control abundances with variations in effect sizes being highest about midway of control abundances and lower variations at the high and low regions of control abundances (see figure \ref{cont_eff}). The variation in the effect sizes can be modeled as a quadratic function of control abundances. An
+While patterns between power and control and effects are unclear, a more precision in the estimation of the standard error may be desirable in understanding the current patterns seen in the datasets.
+
+
+## Future work
+
+Future work on this project will focus on the following
+
+1. Estimation of higher precision of the standard error and
+
+2. Exploration of how the standard error influences power
+
+<!-- New page -->
+\newpage
+
+
+# References {-}
+
+\setlength{\parindent}{-0.2in}
+\setlength{\leftskip}{0.2in}
+\noindent
+<div id="refs"></div>
+```{r refmgr2 references, results="asis", echo=FALSE}
+# Print
+```
+\setlength{\parindent}{0in}
+\setlength{\leftskip}{0in}
+\setlength{\parskip}{0pt}
+

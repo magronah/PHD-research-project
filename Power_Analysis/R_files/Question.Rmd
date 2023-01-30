@@ -1,0 +1,261 @@
+---
+title: "Question"
+author: "Michael Agronah"
+date: "2023-01-21"
+output: pdf_document
+---
+
+## Research goals:
+
+My goal is to estimate the power of differential abundance microbiome studies for a given range of abundance and effect sizes. For example, on average, what is the power of an OTUs with mean abundances [100,200] and fold changes [1,2]. I show illustrations with the heatmaps in figure \ref{fit_heat1}. 
+```{r load_pkgs, include=FALSE, message=FALSE}
+library(ggplot2)
+library(fitdistrplus)
+library(truncnorm)
+library(BiocManager)
+if (FALSE) BiocManager::install(c("DESeq2", "edgeR"))
+library(nlme)
+library(sn)
+library(truncdist)
+library(DESeq2)
+library(tidyverse)
+library(bbmle)
+library(patchwork)
+library(truncdist)
+library(plyr)
+library(metR)  
+library(mgcv)
+library(ggplot2)
+library(patchwork)
+library(extraDistr)
+library(here)
+setwd(here())
+theme_set(theme_bw())
+```
+
+```{r load_data, include=FALSE, message=FALSE, echo=FALSE}
+path <- "Power_Project/Datasets/"
+plot_path <- "Latex_Files/Proposal/Figs/power/"
+source("Power_Project/R_files/Functions.R")
+
+plotname <- "box_plot_effects_"
+#########################################
+data_list <- mget(load("Power_Project/Datasets/data.RData"))
+metadata_list <- mget(load("Power_Project/Datasets/groups.RData"))
+name <- names(metadata_list); stopifnot(names(data_list) == name)
+############################################################
+subset <- c("PRJNA453621","PRJEB45948","PRJNA589343", "PRJNA687773")
+names(subset) <- subset
+data_list <- list(data_list[["PRJNA453621"]], data_list[["PRJEB45948"]],
+                  data_list[["PRJNA589343"]], data_list[["PRJNA687773"]])
+
+metadata_list <- list(metadata_list[["PRJNA453621"]],
+                      metadata_list[["PRJEB45948"]],
+                      metadata_list[["PRJNA589343"]],
+                      metadata_list[["PRJNA687773"]])
+
+names(data_list) <- names(subset)
+names(metadata_list) <- names(subset)
+name = names(subset)
+######################################################################
+DeseqRes <- mget(load(paste0(path,"DeseqResults.RData"))) #list of deseq results
+deseq_list <- DeseqRes[[names(DeseqRes)]]   #extra Deseq data from the list
+stopifnot(names(deseq_list) == name)
+
+Control_Treat <- mget(load(paste0(path,"Control_Treat_Data.RData"))) #list of deseq results
+Control_Treat <- Control_Treat[[names(Control_Treat)]]
+stopifnot(names(Control_Treat) == name)
+
+param.disp <- mget(load(paste0(path,"Dispersion_Parameters.RData"))) 
+param.disp <- param.disp[[names(param.disp)]]
+
+logcontrol <- read_data(Control_Treat, "LogControl") #extract control mean datasets from
+```
+
+
+```{r heatmap_1, warning=FALSE, message=FALSE, echo=FALSE,fig.cap="\\label{fit_heat1} Heatmap showing the power and total control abundances in grids control abundance and fold changes"}
+library(png)
+library(grid)
+img <- readPNG("Power_Project/Datasets/heatmapnew1_png")
+grid.raster(img)
+```
+
+\newpage
+## Relationship betwween control abundances and foldchanges for 4 datasets
+1. Plot of the relationship between fold changes and control abundance is shown in figure \ref{cont_eff} 
+
+2. Investigating the scale-location plot shown in figure  \ref{scale_loc},  I found I can model the variance in relationship by some quadratic function. 
+
+3. The abundances follow a skew normal distribution and I fitted a truncated Cauchy to fold changes (figure \ref{fit_con} - \ref{fit_eff}). 
+
+```{r control_effects, echo=FALSE, warning=FALSE, message=FALSE, out.width="50%",fig.align="center", fig.cap="\\label{cont_eff}  Plot of control against effect sizes for datasets with assession numbers PRJNA453621, PRJEB45948, PRJNA589343 and PRJNA687773", fig.height = 5}
+plts=Plot_ContEffects(deseq_list,logcontrol, plot_path)
+m = plts[[1]]; n = plts[[2]]
+(m[[1]]|m[[2]])/(m[[3]]|m[[4]])
+```
+
+```{r scale_location plot, echo=FALSE, warning=FALSE, message=FALSE, out.width="50%",fig.align="center", fig.cap="\\label{scale_loc} Scale-location plot of control against squared fold changes for datasets with assession numbers PRJNA453621, PRJEB45948, PRJNA589343 and PRJNA687773. (red curve is a fitted polynomial of degree 2)", fig.height = 5}
+(n[[1]]|n[[2]])/(n[[3]]|n[[4]])
+```
+
+```{r control_fits, warning=FALSE, message=FALSE, echo=FALSE,out.width="70%",fig.align="center", fig.cap="\\label{fit_con} Histogram and density plots for control abundances and density from a simulated sample from fitting a truncated  normal distribution"}
+file_path <- "control_histograms_"
+v1 = Fit_control(logcontrol,plot_path,file_path, plotname)
+v1 = (v1[[1]]|v1[[2]])/(v1[[3]]|v1[[4]]) & theme(legend.position = "bottom")
+v1 + plot_layout(guides = "collect")
+``` 
+
+
+```{r effect_fits, warning=FALSE, message=FALSE, echo=FALSE,out.width="70%",fig.align="center", fig.cap="\\label{fit_eff} Histogram and density plots for control abundances and density from a simulated sample from fitting a Cauchy distribution to the data"}
+param.control <- mget(load(paste0(path,"Control_Parameters.RData"))) #lis lts
+param.control <- param.control[[names(param.control)]]
+
+effects_list <- mget(load(paste0(path,"DeseqFoldChanges.RData"))) 
+effects_list <- effects_list[[names(effects_list)]]
+
+plotname  <- "effects_dist_"
+v = Fit_Effects(effects_list,logcontrol,plot_path,plotname)
+vv = (v[[1]]|v[[2]])/(v[[3]]|v[[4]]) & theme(legend.position = "bottom")
+vv + plot_layout(guides = "collect")
+```
+
+\newpage 
+## My Question
+1. Figure \ref{fit_heat11} shows the results from simulating control abundances and fold changes and calculating power. 
+2. I define power as the number of p-values (with multiple hypothesis correction accounted for by the Benjamin-Hochberg correction) that are less than a significant level of 0.1. 
+3. I don't seem to be making sense of the plots as there are no clear patterns. Wanted to check up with you on your thoughts about this plots. 
+4. I standardised the fold changes by dividing by the an estimated standard error to attempt normalising it but that doesnt solve the lack of pattern. 
+5. Plot with standardised fold changes are on the second column and non-standardised fold changes are on the first column. 
+
+```{r contour, warning=FALSE, message=FALSE, echo=FALSE,fig.width=14, fig.height=15,fig.cap="\\label{fit_heat11} Heatmap showing the power and total number of taxa in grids of control and effect sizes"}
+combined_data <- mget(load("Power_Project/Datasets/combined_data_list.RData"))
+combined_data <- combined_data[[names(combined_data)]]
+r = Power_Heatmap(combined_data)
+plts1 = r[["full_plot"]]; plts2 = r[["reduced_plot2"]]
+
+pr1 =contour_plots(combined_data, standardised = FALSE,
+                                    interval=c(0.01,0.01,0.01,0.01))
+                  #interval=c(0.005,0.0005,0.005,0.005))
+
+pr2 =contour_plots(combined_data, standardised = TRUE,
+                                    interval=c(0.01,0.01,0.01,0.01))
+                  #interval=c(0.005,0.0005,0.005,0.005))
+
+n = (pr1[[1]][["contour_plot"]]|pr2[[1]][["contour_plot"]])/(pr1[[2]][["contour_plot"]]|pr2[[2]][["contour_plot"]])/(pr1[[3]][["contour_plot"]]|pr2[[3]][["contour_plot"]])/
+  (pr1[[4]][["contour_plot"]]|pr2[[4]][["contour_plot"]])  & theme(legend.position = "bottom")
+n + plot_layout(guides = "collect")
+
+# n = (pr[[1]][["contour_plot"]]|pr[[2]][["contour_plot"]])/(pr[[3]][["contour_plot"]]|pr[[4]][["contour_plot"]]) & theme(legend.position = "bottom")
+# n + plot_layout(guides = "collect")
+```
+
+
+<!-- ### Simulation studies  -->
+<!-- Data was simulated from a negative binomial distribution with 20 samples per group and 1000 OTUs. 1000 dispersion parameters were simulated from a uniform distribution, one dispersion for each OTU. By experimenting using the 10 datasets mentioned above, we observed the mean control abundances followed a right skewed normal distribution and the effect sizes had a heavy tails distribution with peak at zero  -->
+<!-- (refer to figures \ref{fit_con} - \ref{fit_eff} the histogram and density plots of control abundances and fold changes for 4 of the datasets).  Thus, control abundances were simulated from a right skewed normal distribution using the **rsn** function in the *sn* R package with parameters $(xi=0, omega=3, alpha=1, tau=0)$ [@ refer to ... for details on the parameter description. Effect sizes were simulated from a truncated Cauchy distribution truncated at -5 to 5 and  location =0 and scale = 0.5.  -->
+
+<!-- ```{r data_simulation, echo=FALSE, warning=FALSE, message=FALSE, out.width="70%",fig.align="center", fig.cap="\\label{cont_eff}  Plot of control against fold change", fig.height = 5} -->
+<!-- library(ggplot2) -->
+<!-- library(fitdistrplus) -->
+<!-- library(truncnorm) -->
+<!-- library(BiocManager) -->
+<!-- library(nlme) -->
+<!-- library(truncdist) -->
+<!-- library(DESeq2) -->
+<!-- library(tidyverse) -->
+<!-- library(bbmle) -->
+<!-- library(patchwork) -->
+<!-- library(truncdist) -->
+<!-- library(plyr) -->
+<!-- library(metR)   -->
+<!-- library(mgcv) -->
+<!-- library(ggplot2) -->
+<!-- library(patchwork) -->
+<!-- library(extraDistr) -->
+<!-- library(fitdistrplus) -->
+<!-- library(sn) -->
+
+<!-- set.seed(101) -->
+<!-- n = 20; notu = 1000 -->
+<!-- Lfoldchange = rtrunc(notu, 'cauchy', a=-5, b=5, location=0, scale=0.5) -->
+<!-- foldchange = 2^Lfoldchange -->
+<!-- control_mean = 2^(rsn(n=notu, xi=0, omega=3, alpha=1, tau=0, dp=NULL)) -->
+<!-- treat_mean = control_mean*foldchange -->
+<!-- means=(control_mean + treat_mean)/2 -->
+
+<!-- dispersion =  runif(notu,0,1) -->
+<!-- df = data.frame(means, dispersion) -->
+
+<!-- data <- data.frame(apply(df,1,function(x){ -->
+<!--     rnegbin(n=2*n, mu = x[1], theta = x[2])}))  -->
+<!--   rownames(data)  <-  paste0("Sample",1:(2*n)) -->
+<!--   colnames(data)  <-  paste0("OTU",1:notu) -->
+
+<!-- metadata =  data.frame(Sample=paste0("Sample",1:(2*n)), -->
+<!--                        Groups=factor(rep(c("control", "treatment"),each=n))) -->
+
+<!-- m<-  rownames(data)[1]; p <- colnames(data)[1] -->
+<!--     if (nchar(m) < nchar(p) ) { -->
+<!--       data <- data -->
+<!--     } else { -->
+<!--       data <- t(data) -->
+<!--     } -->
+
+<!--     ############################################################################# -->
+<!--     ##Deseq processes -->
+<!--     dds <- DESeqDataSetFromMatrix(data, metadata, ~Groups) -->
+<!--     keep <- rowSums(counts(dds)) >= 50 -->
+<!--     dds <- dds[keep,]; data <- data[keep,]  -->
+<!--     ############################################################################# -->
+<!--     #' Remove samples with all zero (deseq needs this to run effectively)  -->
+<!--     r <- which(colSums(data) == 0) -->
+<!--     if (length(r) > 0){ -->
+<!--       data <- data[,-r]; metadata <- metadata[-r,] -->
+<!--       dds <- DESeqDataSetFromMatrix(data, metadata, ~Groups) -->
+<!--     } -->
+<!--     ############################################################################# -->
+<!--     dds$Groups <- relevel(dds$Groups, ref = "control") -->
+<!--     dds <- DESeq(dds,sfType ="poscounts", minReplicatesForReplace=Inf)  -->
+<!--     res <- results(dds, cooksCutoff=TRUE, independentFiltering=TRUE) -->
+<!--     reslt <- lfcShrink(dds, res=res, coef=2, type="normal")  -->
+<!--     result <- data.frame(reslt) -->
+
+<!--     ############################################## -->
+<!--     ##Control Treatment splits -->
+<!--     k <- which(metadata$Groups == "treatment") -->
+<!--     control <- data[,-k]; treatment <- data[,k]  -->
+<!--     stopifnot(colnames(control) == metadata$Samples[-k]) -->
+<!--     stopifnot(colnames(treatment) == metadata$Samples[k]) -->
+<!--     #Prop_zeros[[index]] <-  length(k)/length(cont_Means) -->
+<!--     ############################################################################# -->
+<!--     cont_Means <- rowMeans(control); treat_Means <- rowMeans(treatment) -->
+<!--     logcontrol = log2(cont_Means);   logtreat = log2(treat_Means) -->
+<!--     logfoldchange = result$log2FoldChange -->
+
+<!--     r1 = which(is.infinite(logcontrol)); r2= which(is.infinite(logtreat)) -->
+<!--     r =  c(r1, r2) -->
+
+<!-- if(length(r)>0){ -->
+<!--   logcontrol = logcontrol[-r]; logtreat = logtreat[-r] -->
+<!--   logfoldchange = logfoldchange[-r] -->
+<!-- } -->
+
+<!-- df = data.frame(logcontrol,logfoldchange) -->
+
+<!-- ggplot(df, aes(x = logcontrol,y=logfoldchange)) + -->
+<!--   geom_point() + -->
+<!--   geom_smooth()  -->
+
+<!-- plot(result$log2FoldChange,Lfoldchange[keep]) -->
+
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- df = data.frame(logcontrol,logfoldchange) -->
+<!-- ggplot(df, aes(x = logcontrol,y=sqrt(abs(logfoldchange)))) + -->
+<!--   geom_point(method="gam") + -->
+<!--   geom_smooth()  -->
+<!-- ``` -->
+
+
+
