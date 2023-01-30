@@ -1,3 +1,292 @@
+##' @Power_Heatmap Function to plot heatmap for power
+##' @all_data_list contains all data needed for the heatmap plot
+##' @nTaxa filter heatmap regions with less than nTaxa total abundances
+##' @standardised standard error estimates for foldchanges using delta method
+##' @deseqstandardised standard error estimates for foldchanges from deseq
+
+Power_Heatmap <-function(all_data_list, nTaxa =  100, 
+                         standardised = FALSE,
+                         deseqstandardised = FALSE,
+                         xblocks=8, yblocks=8,showText=TRUE,txtSize=3,
+                         heatmap.low="lightgreen",heatmap.high="orangered")
+{
+  index = 1; plts1 = plts2 = list()
+  for(n in names(all_data_list)){
+    
+    data =  all_data_list[[n]]
+    
+    comb1 <- with(data,tibble(lcontrol = true_control, abs_lfc = abs(true_effect),
+                              power = as.numeric(power), meancounts = 2^(true_control) ))
+    
+    
+    comb2 <- with(data,tibble(lcontrol = true_control, 
+                              abs_lfc = abs(true_effect/deltaStandard_error),
+                              power = as.numeric(power), meancounts = 2^(true_control) ))
+    
+    comb3 <- with(data,tibble(lcontrol = true_control, 
+                              abs_lfc = abs(true_effect/deseqStandard_error),
+                              power = as.numeric(power), meancounts = 2^(true_control) ))
+    
+    if (standardised) comb = comb2 
+    else if (deseqstandardised)  comb = comb3
+    else comb =comb1
+    # Call ddply to roll-up the data and calculate summary means, etc
+    dfe.plot<-ddply(comb,
+                    .(logControl=cut(comb$lcontrol,xblocks),
+                      logFoldChange=cut(comb$abs_lfc,yblocks)),
+                    summarize,
+                    Power=mean(power),
+                    Sum = sum(meancounts) )
+    
+    ## BUILD THE SUMMARY CHART
+    g1<-ggplot(dfe.plot) +
+      geom_raster(aes(logControl,logFoldChange,fill=Power),alpha=0.75) +
+      scale_fill_gradient(low=heatmap.low, high=heatmap.high) +
+      theme_bw() + theme(axis.text.x=element_text(angle=-90)) +
+      ggtitle(paste(n, sep="")) +
+      theme(legend.position = "bottom")
+    
+    if(showText)g1<-g1+geom_text(aes(logControl,logFoldChange,
+                                     label=paste("Sum=",round(Sum,0),
+                                                 "\nPow=",round(Power,3)),
+                                     fontface=c("italic")),
+                                 color="black",size=txtSize)
+    ##############################################################################
+    dfe.plot  = dfe.plot[dfe.plot$Sum >=nTaxa, ]
+    
+    g2<-ggplot(dfe.plot) +
+      geom_raster(aes(logControl,logFoldChange,fill=Power),alpha=0.75) +
+      scale_fill_gradient(low=heatmap.low, high=heatmap.high) +
+      theme_bw() + theme(axis.text.x=element_text(angle=-90)) +
+      ggtitle(paste(n,sep="")) +
+      theme(legend.position = "bottom")
+    
+    if(showText)g2<-g2+geom_text(aes(logControl,logFoldChange,
+                                     label=paste("Sum=",round(Sum,0),
+                                                 "\nPow=",round(Power,3)),
+                                     fontface=c("italic")),
+                                 color="black",size=txtSize)
+    
+    plts1[[index]] <- g1 
+    plts2[[index]] <- g2 
+    
+    index <- index + 1
+  }
+  list(full_plot=plts1,reduced_plot2=plts2)
+}
+
+
+#########Function to extract deseq estimates#####################
+combined_data_list <-function(true_control_list, true_effect_list,
+                              deseq_data_list,standard_err_delta_list, alpha=0.1){
+  
+  index = 1;  combined_data = list()
+  stopifnot(names(true_effect_list) == names(deseq_data_list))
+  
+  for(n in names(deseq_data_list)){
+    
+    res_data = deseq_data_list[[n]]
+    true_cont = unlist(true_control_list[[n]])
+    true_eff  =  unlist(true_effect_list[[n]])
+    delta_err = unlist(standard_err_delta_list[[n]])
+    
+    lfc <- (res_data
+            %>% setNames(paste0("padjust", 1:n_sim))
+            %>% purrr::map_dfr(pull, log2FoldChange) 
+    )
+    
+    lfc = unlist(lfc)
+    baseMean <- (res_data
+                 %>% setNames(paste0("padjust", 1:n_sim))
+                 %>% purrr::map_dfr(pull, baseMean) 
+    )
+    baseMean = unlist(baseMean)
+    
+    lfcSE <- (res_data
+              %>% setNames(paste0("padjust", 1:n_sim))
+              %>% purrr::map_dfr(pull, lfcSE) 
+    )
+    lfcSE = unlist(lfcSE)
+    
+    p_adjust <- (res_data
+                 ## 'map' won't work without names
+                 %>% setNames(paste0("padjust", 1:n_sim))
+                 ## map_dfr = run function on each element, combine the results into a data frame
+                 %>% purrr::map_dfr(pull, padj) ## 'pull' = tidyverse equivalent of $/[[
+    )
+    p_val<- unlist(p_adjust)
+    
+    pow <-(!is.na(p_val) & p_val < alpha) # finding the adjusted pvalues less than alpha
+    
+    combined_data[[index]] =  tibble(deseqLogFoldChange = lfc, 
+                                     deseqPvalues = p_val,power=pow,
+                                     true_control=true_cont,
+                                     true_effect = true_eff,
+                                     deseqBaseMean = baseMean,
+                                     deseqStandard_error = lfcSE,
+                                     deltaStandard_error = delta_err
+    )
+    
+    index = index + 1
+  }
+  
+  names(combined_data) = names(deseq_data_list)
+  save(combined_data, file = paste0(path,"combined_data_list.RData"))
+  combined_data
+}
+
+
+
+######### data
+##' @param data_sim function to simulate data
+##' @param param.effect parameters from fitting effects
+##' @param param.dispersion   dispersion parameters
+##' @param param.cont   parameters from fitting control 
+##' @param n_sim        number of simulations
+##' @param n_samples    number of samples
+##' @param n_otu        number of otu
+##' @param filter       filtering threshold
+
+data_sim<-function(param.effects,param.dispersions,param.controls,n_sim,n_samples,n_otu,path,filter)
+{
+  
+  Sim_data = Sim_metadata = sim_data = sim_metadata = list()
+  Dispersions = dispersions = Standard_Err_Delta = standard_error_delta = list()
+  
+  True_treatment = True_effect =  True_control = list()
+  true_treatment = true_effect =  true_control = list()
+  
+  new_otu <- 10*n_otu; index = 1
+  
+  for(n in names(param.effects))
+  { 
+    param.effect = param.effects[[n]]; param.disp  = param.dispersions[[n]]
+    
+    param.cont = param.controls[[n]]; mn = param.cont$mean
+    scale = param.cont$scale_param;  slant = param.cont$slant_param
+    
+    for(i in 1:n_sim)
+    {
+      #simulate control and effects 
+      control = rsn(n=new_otu, xi = mn, omega = scale, alpha = slant) 
+      #control=rtnorm(n=new_otu, mean = mu, sd = exp(logsd), a = lower) 
+      #cont <- unlist(control)
+      
+      ## scale parameters values for cauchy 
+      scal = data.frame(x =  exp(param.effect[,1]+param.effect[,2]*control + 
+                                   param.effect[,3]*control^2))
+      
+      effect <-apply(scal,1,function(x){
+        rtrunc(1, 'cauchy', a=-5, b=5, location=0, scale=x )})
+      
+      ## treatment simulation
+      ##eff <- unlist(effect)
+      treatment <-   effect + control#; treat <- unlist(treatment)
+      
+      mean_abund <- data.frame(treatment = 2^treatment, control = 2^control)
+      mean_abund.data <- data.frame(means = rowMeans(mean_abund))
+      
+      dispers <- function(mean,c0,c1){c0 + c1/mean}
+      disp <- drop(1/apply(mean_abund.data, 2, dispers,  c0 = param.disp[["asymptDisp"]],
+                           c1 = param.disp[["extraPois"]]))
+      
+      df <- data.frame(mean_abund.data,disp)
+      
+      ## Simulate data
+      data <-matrix(apply(df,1,function(x,n=n_samples){rnbinom(n=n,mu=x[1],size=x[2])}),
+                    nrow = new_otu,ncol = n_samples)
+      
+      ## Filter data 
+      keep <- rowSums(data) >= filter
+      data <- data[keep,]
+      
+      effect <- effect[keep]; control <- control[keep]
+      treatment <- treatment[keep]; dispersion <- disp[keep]
+      
+      #Select n_otus after filtering
+      select <- sample.int(n_otu)
+      data <- data[select,]
+      
+      true_effect[[i]] <- effect[select]; true_control[[i]] <- control[select]
+      true_treatment[[i]] <- treatment[select]; dispersions[[i]] <- dispersion[select] 
+      
+      sim_metadata[[i]] <- data.frame(Groups = sort(rep(c("ASD","NT"),each = n_samples/2)),
+                                      row.names=paste0("Sample",1:n_samples))
+      
+      logcont =  control[select]; logtreat = treatment[select]
+      
+      standard_error_delta[[i]] = Standard_Error_Delta(logcont,
+                                                       logtreat, 
+                                                       param.disp)
+      
+      #print(list(logcont,logtreat,param.disp))
+      
+      rownames(data) <- paste0("otu",1:n_otu)
+      colnames(data) <- paste0("Sample",1:n_samples)
+      
+      sim_data[[i]] <- data
+    } 
+    
+    names(true_effect) = names(true_control) = names(true_treatment) =  paste0("Sim_data",1:n_sim)
+    names(dispersions) =  names(sim_metadata) = names(sim_data) = paste0("Sim_data",1:n_sim)
+    names(standard_error_delta) = paste0("Sim_data",1:n_sim)
+    
+    Sim_data[[index]] = sim_data; Sim_metadata[[index]] = sim_metadata 
+    True_effect[[index]] =  true_effect; True_control[[index]]= true_control
+    True_treatment[[index]] = true_treatment; Dispersions[[index]] = dispersions
+    Standard_Err_Delta[[index]] = standard_error_delta
+    
+    index = index + 1
+  }
+  
+  names(Sim_data) = names(Sim_metadata) = names(Dispersions) =  names(param.effects)
+  names(True_effect) =  names(True_control) = names(True_treatment) = names(param.effects)
+  names(Standard_Err_Delta) = names(param.effects)
+  
+  save(Standard_Err_Delta, file = paste0(path,"Standard_Err_Delta.RData"))
+  save(Dispersions, file = paste0(path,"Dispersions.RData")) 
+  save(True_control, file = paste0(path,"True_Control.RData")) 
+  save(True_effect, file = paste0(path,"True_Effect.RData")) 
+  save(True_treatment, file = paste0(path,"True_Treatment.RData")) 
+  save(Sim_metadata, file = paste0(path,"Simulated_Metadata.RData")) 
+  save(Sim_data, file = paste0(path,"Simulated_Data.RData")) 
+}
+
+####################Computing the Standard Errors############################
+Standard_Error_Delta <- function(logcontrol,logtreatment, param.disp){
+  
+  a1 =length(logcontrol); b1 =length(logtreatment) 
+  indx1 = which(is.finite(logcontrol))
+  logcontrol = logcontrol[indx1]; logtreatment = logtreatment[indx1]
+  indx2 = which(is.finite(logtreatment))
+  logcontrol = logcontrol[indx2]; logtreatment = logtreatment[indx2]
+  
+  a2 =length(logcontrol); b2 =length(logtreatment) 
+  #print(c("logcontrol_non_zeros_prop =",a2/a1) )
+  #print(c("logtreatment__non_zeros_prop=",b2/b1))
+  
+  control = 2^logcontrol;  treatment =  2^logtreatment
+  c0 = param.disp[["asymptDisp"]]; c1 = param.disp[["extraPois"]]
+  ##################################################################
+  disp1= c0 + c1/control 
+  disp2= c0 + c1/treatment 
+  Var_cont = control + (control^2)*disp1
+  Var_treat = treatment + (treatment^2)*disp2
+  
+  cont_deriv=  1/(control*log(2)); treat_deriv = 1/(treatment*log(2))
+  cont_secderiv=  -1/((log(2))*control^2); treat_secderiv = -1/((log(2))*treatment^2)
+  ##################################################################
+  Var_lcont = (cont_deriv^2)*Var_cont + (1/4)*(cont_secderiv*Var_cont)^2
+  Var_ltreat = (treat_deriv^2)*Var_treat + (1/4)*(treat_secderiv*Var_treat)^2
+  
+  error = sqrt(Var_lcont+Var_ltreat)
+  err=log2(error)
+  err
+}
+######################################################################
+
+
+
 TruncCauchy <- function(x, loc, scale, low, high, log = TRUE) {
   log.a <- log(pcauchy(high, loc, scale) - pcauchy(low, loc, scale))
   ## compute log-density
@@ -73,208 +362,6 @@ contour_plots <-function(combined_data,standardised = FALSE,
   plts
 }
 
-
-#########Function to plot heatmap for power#####################
-Power_Heatmap <-function(all_data_list, nTaxa =  100, 
-                         standardised = FALSE,
-                         deseqstandardised = FALSE,
-                         xblocks=8, yblocks=8,showText=TRUE,txtSize=3,
-                         heatmap.low="lightgreen",heatmap.high="orangered")
-{
-  index = 1; plts1 = plts2 = list()
-  for(n in names(all_data_list)){
-    
-    data =  all_data_list[[n]]
-    
-    comb1 <- with(data,tibble(lcontrol = true_control, abs_lfc = abs(true_effect),
-                             power = as.numeric(power), meancounts = 2^(true_control) ))
-    
-    
-    comb2 <- with(data,tibble(lcontrol = true_control, 
-                              abs_lfc = abs(true_effect/deltaStandard_error),
-                             power = as.numeric(power), meancounts = 2^(true_control) ))
-    
-    comb3 <- with(data,tibble(lcontrol = true_control, 
-                              abs_lfc = abs(true_effect/deseqStandard_error),
-                              power = as.numeric(power), meancounts = 2^(true_control) ))
-    
-    if (standardised) comb = comb2 
-    else if (deseqstandardised)  comb = comb3
-    else comb =comb1
-    # Call ddply to roll-up the data and calculate summary means, etc
-    dfe.plot<-ddply(comb,
-                    .(logControl=cut(comb$lcontrol,xblocks),
-                      logFoldChange=cut(comb$abs_lfc,yblocks)),
-                    summarize,
-                    Power=mean(power),
-                    Sum = sum(meancounts) )
-    
-    ## BUILD THE SUMMARY CHART
-    g1<-ggplot(dfe.plot) +
-      geom_raster(aes(logControl,logFoldChange,fill=Power),alpha=0.75) +
-      scale_fill_gradient(low=heatmap.low, high=heatmap.high) +
-      theme_bw() + theme(axis.text.x=element_text(angle=-90)) +
-      ggtitle(paste(n,
-                    #" ",
-                    #xblocks,
-                    #" X ",
-                    #yblocks,
-                    # " grid of Data \nbetween ( ",
-                    # round(min(comb$lcontrol),3),
-                    # " : ",
-                    # round(min(comb$abs_lfc),3),
-                    # " ) and ( ",
-                    # round(max(comb$lcontrol),3),
-                    # " : ",
-                    # round(max(comb$abs_lfc),3),
-                    # " )\n\n",
-                    sep="")) +
-      theme(legend.position = "bottom")
-    
-    if(showText)g1<-g1+geom_text(aes(logControl,logFoldChange,
-                                     label=paste("Sum=",round(Sum,0),
-                                                 "\nPow=",round(Power,3)),
-                                     fontface=c("italic")),
-                                 color="black",size=txtSize)
-    ##############################################################################
-    dfe.plot  = dfe.plot[dfe.plot$Sum >=nTaxa, ]
-    
-    g2<-ggplot(dfe.plot) +
-      geom_raster(aes(logControl,logFoldChange,fill=Power),alpha=0.75) +
-      scale_fill_gradient(low=heatmap.low, high=heatmap.high) +
-      theme_bw() + theme(axis.text.x=element_text(angle=-90)) +
-      ggtitle(paste(n, 
-                    #" ",
-                    # xblocks,
-                    # " X ",
-                    # yblocks,
-                    # " grid of Data \nbetween ( ",
-                    # round(min(comb$lcontrol),3),
-                    # " : ",
-                    # round(min(comb$abs_lfc),3),
-                    # " ) and ( ",
-                    # round(max(comb$lcontrol),3),
-                    # " : ",
-                    # round(max(comb$abs_lfc),3),
-                    # " )\n\n",
-                    sep="")) +
-      theme(legend.position = "bottom")
-  
-    if(showText)g2<-g2+geom_text(aes(logControl,logFoldChange,
-                                     label=paste("Sum=",round(Sum,0),
-                                                 "\nPow=",round(Power,3)),
-                                     fontface=c("italic")),
-                                 color="black",size=txtSize)
-    
-    plts1[[index]] <- g1 
-    plts2[[index]] <- g2 
-    
-    index <- index + 1
-  }
-  list(full_plot=plts1,reduced_plot2=plts2)
-}
-
-
-#########Function to extract deseq estimates#####################
-combined_data_list <-function(true_control_list, true_effect_list,
-                              deseq_data_list,standard_err_delta_list, alpha=0.1){
-  
-  index = 1;  combined_data = list()
-  stopifnot(names(true_effect_list) == names(deseq_data_list))
-  
-  for(n in names(deseq_data_list)){
-
-    res_data = deseq_data_list[[n]]
-    true_cont = unlist(true_control_list[[n]])
-    true_eff  =  unlist(true_effect_list[[n]])
-    delta_err = unlist(standard_err_delta_list[[n]])
-    
-    lfc <- (res_data
-            %>% setNames(paste0("padjust", 1:n_sim))
-            %>% purrr::map_dfr(pull, log2FoldChange) 
-    )
-    
-    lfc = unlist(lfc)
-    baseMean <- (res_data
-            %>% setNames(paste0("padjust", 1:n_sim))
-            %>% purrr::map_dfr(pull, baseMean) 
-    )
-    baseMean = unlist(baseMean)
-    
-    lfcSE <- (res_data
-                 %>% setNames(paste0("padjust", 1:n_sim))
-                 %>% purrr::map_dfr(pull, lfcSE) 
-    )
-    lfcSE = unlist(lfcSE)
-    
-    p_adjust <- (res_data
-                 ## 'map' won't work without names
-                 %>% setNames(paste0("padjust", 1:n_sim))
-                 ## map_dfr = run function on each element, combine the results into a data frame
-                 %>% purrr::map_dfr(pull, padj) ## 'pull' = tidyverse equivalent of $/[[
-    )
-    p_val<- unlist(p_adjust)
-    
-    pow <-(!is.na(p_val) & p_val < alpha) # finding the adjusted pvalues less than alpha
-    
-    combined_data[[index]] =  tibble(deseqLogFoldChange = lfc, 
-                       deseqPvalues = p_val,power=pow,
-                       true_control=true_cont,
-                       true_effect = true_eff,
-                       deseqBaseMean = baseMean,
-                       deseqStandard_error = lfcSE,
-                       deltaStandard_error = delta_err
-    )
-    
-    index = index + 1
-  }
-  
-  names(combined_data) = names(deseq_data_list)
-  save(combined_data, file = paste0(path,"combined_data_list.RData"))
-  combined_data
-}
-
-####################Computing the Standard Errors############################
-Standard_Error_Delta <- function(logcontrol,logtreatment, param.disp){
-  
-  a1 =length(logcontrol); b1 =length(logtreatment) 
-  indx1 = which(is.finite(logcontrol))
-  logcontrol = logcontrol[indx1]; logtreatment = logtreatment[indx1]
-  indx2 = which(is.finite(logtreatment))
-  logcontrol = logcontrol[indx2]; logtreatment = logtreatment[indx2]
-  
-  a2 =length(logcontrol); b2 =length(logtreatment) 
-  #print(c("logcontrol_non_zeros_prop =",a2/a1) )
-  #print(c("logtreatment__non_zeros_prop=",b2/b1))
-  
-  control = 2^logcontrol;  treatment =  2^logtreatment
-  c0 = param.disp[["asymptDisp"]]; c1 = param.disp[["extraPois"]]
-  ##################################################################
-  disp1= c0 + c1/control 
-  disp2= c0 + c1/treatment 
-  Var_cont = control + (control^2)*disp1
-  Var_treat = treatment + (treatment^2)*disp2
-  
-  cont_deriv=  1/(control*log(2)); treat_deriv = 1/(treatment*log(2))
-  cont_secderiv=  -1/((log(2))*control^2); treat_secderiv = -1/((log(2))*treatment^2)
-  ##################################################################
-  Var_lcont = (cont_deriv^2)*Var_cont + (1/4)*(cont_secderiv*Var_cont)^2
-  Var_ltreat = (treat_deriv^2)*Var_treat + (1/4)*(treat_secderiv*Var_treat)^2
-  
-  #Its coming from how I am modelling the dispersion. 
-  # print(c0)
-  # print(c1)
-  # Var_lcont = cont_deriv*Var_cont
-  # Var_ltreat = treat_deriv*Var_treat
-  error = sqrt(Var_lcont+Var_ltreat)
-  #p=list(sqrt(V))
-  #names(p) = c("sd_error","logcontrol_non_zeros_prop","logtreatment__non_zeros_prop")
-  err=log2(error)
-  err
-  # print(err)
-}
-######################################################################
-
 ##' @Plot_ContEffects_multi_filters function to plot control- effect sizes 
 ##' for different filtering thresholds
 ##' @deseq_list list of results from deseq2 for different filtering thresholds
@@ -319,120 +406,6 @@ Plot_ContEffects_multi_filters <- function(deseq_list,logcontrol){
 
 
 
-######### data
-##' @param data_sim function to simulate data
-##' @param param.effect parameters from fitting effects
-##' @param param.dispersion   dispersion parameters
-##' @param param.cont   parameters from fitting control 
-##' @param n_sim        number of simulations
-##' @param n_samples    number of samples
-##' @param n_otu        number of otu
-##' @param filter       filtering threshold
-
-data_sim<-function(param.effects,param.dispersions,param.controls,n_sim,n_samples,n_otu,path,filter)
-  {
-  
-  Sim_data = Sim_metadata = sim_data = sim_metadata = list()
-  Dispersions = dispersions = Standard_Err_Delta = standard_error_delta = list()
-  
-  True_treatment = True_effect =  True_control = list()
-  true_treatment = true_effect =  true_control = list()
-  
-  new_otu <- 10*n_otu; index = 1
-  
-  for(n in names(param.effects))
-    { 
-      param.effect = param.effects[[n]]; param.disp  = param.dispersions[[n]]
-      
-      param.cont = param.controls[[n]]; mn = param.cont$mean
-      scale = param.cont$scale_param;  slant = param.cont$slant_param
-
-      for(i in 1:n_sim)
-        {
-        #simulate control and effects 
-        control = rsn(n=new_otu, xi = mn, omega = scale, alpha = slant) 
-        #control=rtnorm(n=new_otu, mean = mu, sd = exp(logsd), a = lower) 
-        #cont <- unlist(control)
-        
-        ## scale parameters values for cauchy 
-        scal = data.frame(x =  exp(param.effect[,1]+param.effect[,2]*control + 
-                                     param.effect[,3]*control^2))
-        
-        effect <-apply(scal,1,function(x){
-          rtrunc(1, 'cauchy', a=-5, b=5, location=0, scale=x )})
-
-        ## treatment simulation
-        ##eff <- unlist(effect)
-        treatment <-   effect + control#; treat <- unlist(treatment)
-        
-        mean_abund <- data.frame(treatment = 2^treatment, control = 2^control)
-        mean_abund.data <- data.frame(means = rowMeans(mean_abund))
-        
-        dispers <- function(mean,c0,c1){c0 + c1/mean}
-        disp <- drop(1/apply(mean_abund.data, 2, dispers,  c0 = param.disp[["asymptDisp"]],
-                             c1 = param.disp[["extraPois"]]))
-        
-        df <- data.frame(mean_abund.data,disp)
-        
-        ## Simulate data
-        data <-matrix(apply(df,1,function(x,n=n_samples){rnbinom(n=n,mu=x[1],size=x[2])}),
-                      nrow = new_otu,ncol = n_samples)
-        
-        ## Filter data 
-        keep <- rowSums(data) >= filter
-        data <- data[keep,]
-
-        effect <- effect[keep]; control <- control[keep]
-        treatment <- treatment[keep]; dispersion <- disp[keep]
-        
-        #Select n_otus after filtering
-        select <- sample.int(n_otu)
-        data <- data[select,]
-        
-        true_effect[[i]] <- effect[select]; true_control[[i]] <- control[select]
-        true_treatment[[i]] <- treatment[select]; dispersions[[i]] <- dispersion[select] 
-        
-        sim_metadata[[i]] <- data.frame(Groups = sort(rep(c("ASD","NT"),each = n_samples/2)),
-                                        row.names=paste0("Sample",1:n_samples))
-        
-        logcont =  control[select]; logtreat = treatment[select]
-        
-        standard_error_delta[[i]] = Standard_Error_Delta(logcont,
-                                       logtreat, 
-                                       param.disp)
-        
-        #print(list(logcont,logtreat,param.disp))
-        
-        rownames(data) <- paste0("otu",1:n_otu)
-        colnames(data) <- paste0("Sample",1:n_samples)
-        
-        sim_data[[i]] <- data
-        } 
-  
-      names(true_effect) = names(true_control) = names(true_treatment) =  paste0("Sim_data",1:n_sim)
-      names(dispersions) =  names(sim_metadata) = names(sim_data) = paste0("Sim_data",1:n_sim)
-      names(standard_error_delta) = paste0("Sim_data",1:n_sim)
-      
-      Sim_data[[index]] = sim_data; Sim_metadata[[index]] = sim_metadata 
-      True_effect[[index]] =  true_effect; True_control[[index]]= true_control
-      True_treatment[[index]] = true_treatment; Dispersions[[index]] = dispersions
-      Standard_Err_Delta[[index]] = standard_error_delta
-        
-      index = index + 1
-      }
-   
-  names(Sim_data) = names(Sim_metadata) = names(Dispersions) =  names(param.effects)
-  names(True_effect) =  names(True_control) = names(True_treatment) = names(param.effects)
-  names(Standard_Err_Delta) = names(param.effects)
-  
-  save(Standard_Err_Delta, file = paste0(path,"Standard_Err_Delta.RData"))
-  save(Dispersions, file = paste0(path,"Dispersions.RData")) 
-  save(True_control, file = paste0(path,"True_Control.RData")) 
-  save(True_effect, file = paste0(path,"True_Effect.RData")) 
-  save(True_treatment, file = paste0(path,"True_Treatment.RData")) 
-  save(Sim_metadata, file = paste0(path,"Simulated_Metadata.RData")) 
-  save(Sim_data, file = paste0(path,"Simulated_Data.RData")) 
-}
 
 
 
@@ -979,7 +952,7 @@ Plot_ContEffects <-function(deseq_list,logcontrol, plot_path){
 ##' @metadata_list list of metadata 
 
 #outlier_thresh 
-deseq_res<- function(data_list, metadata_list,plot_path, plotname,filter=10){
+deseq_res<- function(data_list, metadata_list,plot_path,filter=10){
   
   DeseqResults = dispersion_coef= list(); Control_Treat  <- list(); index <- 1; 
   Prop_zeros= Effects_list= list()
@@ -1011,7 +984,7 @@ deseq_res<- function(data_list, metadata_list,plot_path, plotname,filter=10){
     #############################################################################
     dds$Groups <- relevel(dds$Groups, ref = "NT")
     dds <- DESeq(dds,sfType ="poscounts", minReplicatesForReplace=Inf) 
-    res <- results(dds, cooksCutoff=FALSE, independentFiltering=FALSE)
+    res <- results(dds, cooksCutoff=TRUE, independentFiltering=TRUE)
     reslt <- lfcShrink(dds, res=res, coef=2, type="normal") 
     result <- data.frame(reslt)
     DeseqResults <- c(DeseqResults, list(result))
